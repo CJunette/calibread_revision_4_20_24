@@ -1,0 +1,11 @@
+model_index,bool_row,bool_col,bool_row_length,bool_col_within_token,bool_token_length,bool_word_index_in_sentence,bool_sentence_length,bool_full_text_constituency_depth,bool_split_text_constituency_depth,bool_sentence_embedding,bool_token_embedding
+0,False,False,False,False,False,False,False,False,False,False,False
+1,True,True,True,True,True,True,True,True,True,True,True
+2,True,True,True,False,False,False,False,False,False,False,False
+3,False,False,False,True,True,False,False,False,False,False,False
+4,False,False,False,False,False,True,True,False,False,False,False
+5,False,False,False,False,False,False,False,True,True,False,False
+6,False,False,False,False,False,False,False,False,False,True,True
+7,True,True,True,False,False,False,False,True,False,False,False
+8,False,False,False,True,True,False,False,False,True,False,False
+9,False,False,False,False,False,True,True,False,True,True,False
