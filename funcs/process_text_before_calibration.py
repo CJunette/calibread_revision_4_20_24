@@ -105,7 +105,7 @@ def _add_penalty_to_text_data(text_sorted_mapping_with_prediction_list, model_in
 
         blank_supplement_col_list = df[df["word"] == "blank_supplement"]["col"].unique().tolist()
         blank_supplement_col_below_zero_list = [blank_supplement_col_list[i] for i in range(len(blank_supplement_col_list)) if blank_supplement_col_list[i] < 0]
-        left_attract_supplement_threshold = -1 if len(blank_supplement_col_below_zero_list) > 0 else 0
+        left_attract_supplement_threshold = -3 if len(blank_supplement_col_below_zero_list) > 0 else 0
 
         for index, row in df.iterrows():
             word = row["word"]

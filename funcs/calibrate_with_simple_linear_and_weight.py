@@ -10,6 +10,7 @@ from scipy.spatial import ConvexHull
 
 from funcs.gradient_descent import gradient_descent_with_torch
 from funcs.manual_calibrate_for_std import apply_transform_to_calibration, compute_distance_between_std_and_correction
+from funcs.point_matching import point_matching_multi_process, random_select_for_supplement_point_pairs
 from funcs.util_functions import change_homogeneous_vector_to_2d_vector, change_2d_vector_to_homogeneous_vector
 
 
@@ -74,7 +75,7 @@ def _create_text_nearest_neighbor(text_data):
     return row_nbrs_list, total_nbrs_list
 
 
-def _transform_using_centroid_and_outbound(gaze_point_list_1d, effective_text_point_dict, reading_data, subject_index, calibration_data):
+def _transform_using_centroid_and_outbound(gaze_point_list_1d, selected_gaze_point_list_1d, effective_text_point_dict, reading_data, selected_reading_data, subject_index, calibration_data):
     """
     将gaze data和text point先做缩放，然后基于重心对齐。
     """
@@ -126,9 +127,9 @@ def _transform_using_centroid_and_outbound(gaze_point_list_1d, effective_text_po
                              [0, y_scale, 0],
                              [0, 0, 1]])
 
-    gaze_point_list_1d_homogeneous = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in gaze_point_list_1d]
-    gaze_point_list_1d_homogeneous = [np.dot(scale_matrix, gaze_point) for gaze_point in gaze_point_list_1d_homogeneous]
-    gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in gaze_point_list_1d_homogeneous])
+    selected_gaze_point_list_1d_homogeneous = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d]
+    selected_gaze_point_list_1d_homogeneous = [np.dot(scale_matrix, gaze_point) for gaze_point in selected_gaze_point_list_1d_homogeneous]
+    selected_gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d_homogeneous])
 
     # filtered_gaze_point_max_x = np.max(gaze_point_list_1d[clusters != -1][:, 0])
     # filtered_gaze_point_min_x = np.min(gaze_point_list_1d[clusters != -1][:, 0])
@@ -150,18 +151,18 @@ def _transform_using_centroid_and_outbound(gaze_point_list_1d, effective_text_po
                                  [0, 1, translate_vector[1]],
                                  [0, 0, 1]])
 
-    gaze_point_list_1d_homogeneous = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in gaze_point_list_1d]
-    gaze_point_list_1d_homogeneous = [np.dot(translate_matrix, gaze_point) for gaze_point in gaze_point_list_1d_homogeneous]
-    gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in gaze_point_list_1d_homogeneous])
+    selected_gaze_point_list_1d_homogeneous = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d]
+    selected_gaze_point_list_1d_homogeneous = [np.dot(translate_matrix, gaze_point) for gaze_point in selected_gaze_point_list_1d_homogeneous]
+    selected_gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d_homogeneous])
 
-    for text_index in range(len(reading_data)):
-        gaze_x = reading_data[text_index]["gaze_x"]
-        gaze_y = reading_data[text_index]["gaze_y"]
+    for text_index in range(len(selected_reading_data)):
+        gaze_x = selected_reading_data[text_index]["gaze_x"]
+        gaze_y = selected_reading_data[text_index]["gaze_y"]
         gaze_homogeneous = [change_2d_vector_to_homogeneous_vector([gaze_x.iloc[i], gaze_y.iloc[i]]) for i in range(len(gaze_x))]
         gaze_homogeneous = [np.dot(translate_matrix, np.dot(scale_matrix, gaze_point)) for gaze_point in gaze_homogeneous]
         gaze_1d = [change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in gaze_homogeneous]
-        reading_data[text_index]["gaze_x"] = [gaze_1d[i][0] for i in range(len(gaze_1d))]
-        reading_data[text_index]["gaze_y"] = [gaze_1d[i][1] for i in range(len(gaze_1d))]
+        selected_reading_data[text_index]["gaze_x"] = [gaze_1d[i][0] for i in range(len(gaze_1d))]
+        selected_reading_data[text_index]["gaze_y"] = [gaze_1d[i][1] for i in range(len(gaze_1d))]
 
     # 把calibration的数据也做一下相同的变换。
     for row_index in range(len(calibration_data[1])):
@@ -182,13 +183,13 @@ def _transform_using_centroid_and_outbound(gaze_point_list_1d, effective_text_po
             calibration_data[0][row_index][col_index]["gaze_x"] = [gaze_2d[i][0] for i in range(len(gaze_2d))]
             calibration_data[0][row_index][col_index]["gaze_y"] = [gaze_2d[i][1] for i in range(len(gaze_2d))]
 
-    return gaze_point_list_1d, effective_text_point_dict, reading_data, calibration_data, scale_matrix, translate_matrix
+    return selected_gaze_point_list_1d, effective_text_point_dict, selected_reading_data, calibration_data, scale_matrix, translate_matrix
 
 
-def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_data_list,
-                   total_nbrs_list, row_nbrs_list,
-                   effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
-                   distance_threshold):
+def point_matching_single_process(reading_data, gaze_point_list_1d, text_data, filtered_text_data_list,
+                                  total_nbrs_list, row_nbrs_list,
+                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
+                                  distance_threshold):
     np.random.seed(configs.random_seed)
 
     # 1. 首先遍历所有的reading point，找到与其row label一致的、距离最近的text point，然后将这些匹配点加入到point_pair_list中。
@@ -255,6 +256,7 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
             point_pair_list.extend(point_pair_list_1)
             weight_list.extend(weight_list_1)
             row_label_list.extend(row_label_list_1)
+
     # 2. 接下来做的是确认有文字，但没有reading data的text_unit，并根据其最近的reading data，添加额外的点对。该添加点对不受文章序号限制。
     # 生成一个所有reading point的nearest neighbor。
     total_reading_nbrs = NearestNeighbors(n_neighbors=int(len(gaze_point_list_1d)/4), algorithm='kd_tree').fit(gaze_point_list_1d)
@@ -297,6 +299,7 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
 
     # raw_point_pair_length = len(point_pair_list)
 
+    # 3. 对于横向最外侧的补充点或空格点（即左右侧紧贴近正文的点），都可以考虑额外添加一些匹配点对，添加的weight是负数。
     # 这里单独为要添加boundary的point pair生成list，方便后续筛选。
     left_point_pair_list = []
     right_point_pair_list = []
@@ -304,8 +307,10 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
     right_weight_list = []
     left_row_label_list = []
     right_row_label_list = []
+    bottom_point_pair_list = []
+    bottom_weight_list = []
+    bottom_row_label_list = []
 
-    # 3. 对于横向最外侧的补充点或空格点（即左右侧紧贴近正文的点），都可以考虑额外添加一些匹配点对，添加的weight是负数。
     for text_index in range(len(text_data)):
         text_df = text_data[text_index]
         row_list = text_df["row"].unique().tolist()
@@ -322,9 +327,9 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
                     for point_index in range(len(indices[0])):
                         if distances[0][point_index] < distance_threshold * configs.bottom_boundary_distance_threshold_ratio:
                             gaze_point = reading_data[text_index].iloc[indices[0][point_index]][["gaze_x", "gaze_y"]].values.tolist()
-                            point_pair_list.append([gaze_point, [x, y]])
-                            weight_list.append(configs.empty_penalty * configs.bottom_boundary_ratio)
-                            row_label_list.append(-1)
+                            bottom_point_pair_list.append([gaze_point, [x, y]])
+                            bottom_weight_list.append(configs.empty_penalty * configs.bottom_boundary_ratio)
+                            bottom_row_label_list.append(-1)
                         else:
                             break
             # 对于其它行，对左右两侧的blank_supplement添加匹配。
@@ -381,23 +386,12 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
 
     # 4. 限制添加点的数量。
     # 对于那些validation数量过少的情况，需要限制supplement point pair的数量，保证其与raw point pair的比例，避免出现过分的失调。这里的限制我修改过，看一下如果效果不好就还原回去。
-    if len(configs.training_index_list) > 16:
-        supplement_select_indices = np.random.choice(len(supplement_point_pair_list), min(len(supplement_point_pair_list), int(len(point_pair_list) * configs.supplement_select_ratio)), replace=False)
-        supplement_point_pair_list = [supplement_point_pair_list[i] for i in supplement_select_indices]
-        supplement_weight_list = [supplement_weight_list[i] for i in supplement_select_indices]
-        supplement_row_label_list = [supplement_row_label_list[i] for i in supplement_select_indices]
+    supplement_point_pair_list, supplement_weight_list, supplement_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list, supplement_row_label_list, configs.supplement_select_ratio)
 
     # 对于那些validation数量过少的情况，需要限制boundary point pair的数量，保证其与raw point pair的比例，避免出现过分的失调。这里的限制我修改过，看一下如果效果不好就还原回去。
-    if len(configs.training_index_list) > 16:
-        left_select_indices = np.random.choice(len(left_point_pair_list), min(len(left_point_pair_list), int(len(point_pair_list) * configs.boundary_select_ratio)), replace=False)
-        left_point_pair_list = [left_point_pair_list[i] for i in left_select_indices]
-        left_weight_list = [left_weight_list[i] for i in left_select_indices]
-        left_row_label_list = [left_row_label_list[i] for i in left_select_indices]
-
-        right_select_indices = np.random.choice(len(right_point_pair_list), min(len(right_point_pair_list), int(len(point_pair_list) * configs.boundary_select_ratio)), replace=False)
-        right_point_pair_list = [right_point_pair_list[i] for i in right_select_indices]
-        right_weight_list = [right_weight_list[i] for i in right_select_indices]
-        right_row_label_list = [right_row_label_list[i] for i in right_select_indices]
+    left_point_pair_list, left_weight_list, left_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, left_point_pair_list, left_weight_list, left_row_label_list, configs.boundary_select_ratio)
+    right_point_pair_list, right_weight_list, right_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, right_point_pair_list, right_weight_list, right_row_label_list, configs.boundary_select_ratio)
+    bottom_point_pair_list, bottom_weight_list, bottom_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, bottom_point_pair_list, bottom_weight_list, bottom_row_label_list, configs.boundary_select_ratio)
 
     point_pair_list.extend(supplement_point_pair_list)
     weight_list.extend(supplement_weight_list)
@@ -411,6 +405,10 @@ def point_matching(reading_data, gaze_point_list_1d, text_data, filtered_text_da
     weight_list.extend(right_weight_list)
     row_label_list.extend(right_row_label_list)
 
+    point_pair_list.extend(bottom_point_pair_list)
+    weight_list.extend(bottom_weight_list)
+    row_label_list.extend(bottom_row_label_list)
+
     return point_pair_list, weight_list, row_label_list
 
 
@@ -422,8 +420,6 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         df = reading_data[text_index].iloc[::5, :].copy()
         df.reset_index(drop=True, inplace=True)
         selected_reading_data.append(df)
-
-    selected_reading_data[0]["gaze_x"] = [0] * len(selected_reading_data[0])
 
     log_path = f"gradient_descent_log/{configs.file_index}"
     if not os.path.exists(log_path):
@@ -446,9 +442,21 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
     # 获取1d的gaze point list。
     total_gaze_point_num = 0
-    gaze_point_list_1d = []
+    selected_gaze_point_list_1d = []
+    selected_gaze_point_info_list_1d = []
     for text_index in range(len(selected_reading_data)):
         coordinates = selected_reading_data[text_index][["gaze_x", "gaze_y"]].values.tolist()
+        selected_gaze_point_list_1d.extend(coordinates)
+        selected_gaze_row = selected_reading_data[text_index]["row_label"].values.tolist()
+        selected_gaze_info = [(text_index, selected_gaze_row[i], i) for i in range(len(selected_gaze_row))]
+        selected_gaze_point_info_list_1d.extend(selected_gaze_info)
+        total_gaze_point_num += len(coordinates)
+    selected_gaze_point_list_1d = np.array(selected_gaze_point_list_1d)
+    selected_gaze_point_info_list_1d = np.array(selected_gaze_point_info_list_1d)
+
+    gaze_point_list_1d = []
+    for text_index in range(len(reading_data)):
+        coordinates = reading_data[text_index][["gaze_x", "gaze_y"]].values.tolist()
         gaze_point_list_1d.extend(coordinates)
         total_gaze_point_num += len(coordinates)
     gaze_point_list_1d = np.array(gaze_point_list_1d)
@@ -465,8 +473,9 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     # 生成：按文本、行号来对text point分类得到的nearest neighbor；按文本、行号来对text point分类，且去除blank_supplement的nearest neighbor；以及所有text_point的nearest neighbor。
     # row_nbrs_list只包括每行文本的text_unit的nearest neighbor；total_nbrs_list包括所有文本的text_unit及boundary unit的nearest neighbor。这两个nearest neighbor都是为了方便后面reading data找到需要匹配的text_unit和boundary_unit。
     row_nbrs_list, total_nbrs_list = _create_text_nearest_neighbor(text_data)
-    # 将gaze data和text point先做缩放，然后基于重心对齐。
-    gaze_point_list_1d, effective_text_point_dict, selected_reading_data, calibration_data, scale_matrix, translate_matrix = _transform_using_centroid_and_outbound(gaze_point_list_1d, effective_text_point_dict, selected_reading_data, subject_index, calibration_data)
+    # 将gaze data和text point先做缩放，然后基于重心对齐。这里中心对齐还需要使用之前完整的text_data。
+    selected_gaze_point_list_1d, effective_text_point_dict, selected_reading_data, calibration_data, scale_matrix, translate_matrix = (
+        _transform_using_centroid_and_outbound(gaze_point_list_1d, selected_gaze_point_list_1d, effective_text_point_dict, reading_data, selected_reading_data, subject_index, calibration_data))
 
     with open(log_file_path, "a") as log_file:
         json.dump({"scale_matrix": scale_matrix.tolist(), "translate_matrix": translate_matrix.tolist()}, log_file, indent=4)
@@ -479,6 +488,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     gd_error_list = []
     learning_rate_list = []
     last_grad_norm = 10000
+    last_selected_point_pair_info_list = []
     for iteration_index in range(max_iteration):
         print("iteration_index: ", iteration_index)
         # 每次迭代前，创建一个类似effective_text_point_dict的字典，用于记录每个文本点被阅读点覆盖的次数。
@@ -487,25 +497,43 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
             actual_text_point_dict[key] = 0
 
         actual_supplement_text_point_dict = supplement_text_point_dict.copy()
-        point_pair_list, weight_list, row_label_list = point_matching(selected_reading_data, gaze_point_list_1d, text_data, filtered_text_data_list,
-                                                                      total_nbrs_list, row_nbrs_list,
-                                                                      effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
-                                                                      distance_threshold)
+        point_pair_list, weight_list, info_list = point_matching_multi_process(selected_reading_data, selected_gaze_point_list_1d, selected_gaze_point_info_list_1d,
+                                                                               text_data, filtered_text_data_list,
+                                                                               total_nbrs_list, row_nbrs_list,
+                                                                               effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
+                                                                               distance_threshold)
 
         np.random.seed(iteration_index)
         random_select_indices = np.random.choice(len(point_pair_list), int(configs.random_select_ratio_for_point_pair * len(point_pair_list)), replace=False)
-        selected_point_pair_list = [point_pair_list[i] for i in random_select_indices]
-        selected_weight_list = [weight_list[i] for i in random_select_indices]
-        selected_row_label_list = [row_label_list[i] for i in random_select_indices]
+        random_selected_point_pair_list = [point_pair_list[i] for i in random_select_indices]
+        random_selected_weight_list = [weight_list[i] for i in random_select_indices]
+        random_selected_info_list = [info_list[i] for i in random_select_indices]
 
-        learning_rate = 0.1
+        # 将前后两次不同的匹配点保存到random_selected_point_pair_differ中。
+        if len(last_selected_point_pair_info_list) == 0:
+            random_selected_point_pair_differ = []
+            random_selected_point_pair_same = random_selected_point_pair_list
+            last_selected_point_pair_info_list = random_selected_info_list
+        else:
+            random_selected_point_pair_differ = []
+            for select_index in range(len(random_selected_info_list)):
+                if random_selected_info_list[select_index] not in last_selected_point_pair_info_list:
+                    random_selected_point_pair_differ.append(random_selected_point_pair_list[select_index])
+            random_selected_point_pair_same = []
+            for select_index in range(len(random_selected_info_list)):
+                if random_selected_info_list[select_index] in last_selected_point_pair_info_list:
+                    random_selected_point_pair_same.append(random_selected_point_pair_list[select_index])
+            last_selected_point_pair_info_list = random_selected_info_list
+
+        # learning_rate = 0.1
         # if iteration_index < max_iteration / 2:
-        #     learning_rate = 1
+        #     learning_rate = 0.1
         # else:
-        #     learning_rate = 1 - (iteration_index - max_iteration / 2) / (max_iteration / 2)
+        #     learning_rate = 0.1 - (iteration_index - max_iteration / 2) / (max_iteration / 2) * 0.09
+        learning_rate = 0.1
         learning_rate_list.append(learning_rate)
 
-        transform_matrix, gd_error, last_iteration_num, last_grad_norm = gradient_descent_with_torch(selected_point_pair_list, selected_weight_list,
+        transform_matrix, gd_error, last_iteration_num, last_grad_norm = gradient_descent_with_torch(random_selected_point_pair_list, random_selected_weight_list,
                                                                                                      learning_rate=learning_rate, last_iteration_num=last_iteration_num,
                                                                                                      max_iterations=5000, stop_grad_norm=1, grad_clip_value=1e8)
 
@@ -517,10 +545,10 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
             avg_gaze_coordinate_before_translation_list, avg_gaze_coordinate_after_translation_list, \
             calibration_point_list_modified = apply_transform_to_calibration(subject_index, calibration_data, total_transform_matrix)
 
-        # update gaze_point_list_1d
-        gaze_point_list_1d = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in gaze_point_list_1d]
-        gaze_point_list_1d = [np.dot(transform_matrix, gaze_point) for gaze_point in gaze_point_list_1d]
-        gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in gaze_point_list_1d])
+        # update selected_gaze_point_list_1d
+        selected_gaze_point_list_1d = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d]
+        selected_gaze_point_list_1d = [np.dot(transform_matrix, gaze_point) for gaze_point in selected_gaze_point_list_1d]
+        selected_gaze_point_list_1d = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d])
         # update reading_data
         for text_index in range(len(selected_reading_data)):
             gaze_coordinates = selected_reading_data[text_index][["gaze_x", "gaze_y"]].values.tolist()
@@ -539,7 +567,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
         with open(log_file_path, "a") as log_file:
             json.dump({"iteration_index": iteration_index, "avg_error": avg_distance, "last_iteration_num": last_iteration_num,
-                       "last_gd_error": gd_error.cpu().detach().numpy().tolist(), "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist()}, log_file, indent=4)
+                       "last_gd_error": gd_error.cpu().detach().numpy().tolist(), "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist(), "different_point_pair": random_selected_point_pair_differ}, log_file, indent=4)
             log_file.write(",\n")
 
     with open(log_file_path, "a") as log_file:

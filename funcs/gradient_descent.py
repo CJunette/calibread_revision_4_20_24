@@ -90,7 +90,7 @@ def gradient_descent_with_torch(point_pairs, weight, last_iteration_num, learnin
                     bool_stop = False
                     break
 
-        if last_iteration_num > 1000 and bool_stop:
+        if last_iteration_num > configs.gradient_descent_iteration_threshold and bool_stop:
             last_error = error
             least_index = max_iterations
             break
@@ -101,6 +101,11 @@ def gradient_descent_with_torch(point_pairs, weight, last_iteration_num, learnin
         transform_matrix = torch.concat([transform_matrix_raw, torch.tensor([[0, 0, 1]], dtype=torch.float32, requires_grad=False).cuda(0)], dim=0)
         transform_matrix = transform_matrix.cpu().detach().numpy()
         grad_norm = torch.norm(transform_matrix_raw.grad)
+    elif least_index == 0:
+        # 如果没有做任何迭代，那么返回一个单位矩阵。
+        transform_matrix = np.eye(3)
+        grad_norm = 0
+        last_iteration_num = least_index
     else:
         transform_matrix = torch.concat([final_transform_matrix_raw, torch.tensor([[0, 0, 1]], dtype=torch.float32, requires_grad=False).cuda(0)], dim=0)
         transform_matrix = transform_matrix.cpu().detach().numpy()
