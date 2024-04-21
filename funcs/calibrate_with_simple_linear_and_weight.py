@@ -461,8 +461,17 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         total_gaze_point_num += len(coordinates)
     gaze_point_list_1d = np.array(gaze_point_list_1d)
 
+    # 过滤出不包含blank_supplement的text data。
     filtered_text_data_list = [[] for _ in range(len(text_data))]
     for text_index in range(len(text_data)):
+        # row_list = text_data[text_index]["row"].unique().tolist()
+        # row_list = [row_index for row_index in row_list if row_index <= configs.row_num - 1]
+        # row_list.sort()
+        # for row_index in row_list:
+        #     df = text_data[text_index]
+        #     filtered_text_data_df = df[df["row"] == float(row_index)]
+        #     filtered_text_data_df = filtered_text_data_df[(df["word"] != "blank_supplement") | (df["penalty"] > 0)]
+        #     filtered_text_data_list[text_index].append(filtered_text_data_df)
         for row_index in range(configs.row_num):
             df = text_data[text_index]
             filtered_text_data_df = df[(df["row"] == float(row_index)) & (df["word"] != "blank_supplement")]

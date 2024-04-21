@@ -1,7 +1,7 @@
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 16
+file_index = 18
 
 random_seed = 0
 number_of_process = 8
@@ -26,18 +26,20 @@ epoch_num = 300
 
 location_penalty = 1
 punctuation_penalty = -0.001
-empty_penalty = -0.001
+empty_penalty = -1
 
 bool_weight = True
 weight_divisor = 5
 weight_intercept = 0.01
 completion_weight = 4
 right_down_corner_unmatched_ratio = 1
-left_boundary_ratio = 1250
-right_boundary_ratio = 3500
-bottom_boundary_ratio = 750
+left_boundary_ratio = 1.25
+right_boundary_ratio = 3.5
+top_boundary_ratio = 0.75
+bottom_boundary_ratio = 0.75
 left_boundary_distance_threshold_ratio = 1.25
 right_boundary_distance_threshold_ratio = 1.25
+top_boundary_distance_threshold_ratio = 0.25
 bottom_boundary_distance_threshold_ratio = 0.25
 boundary_select_ratio = 0.2
 supplement_select_ratio = 1
