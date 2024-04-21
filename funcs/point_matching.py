@@ -137,9 +137,9 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
     weight_list = []
     info_list = []
 
-    # 1. 对于5.5，也添加了左右控制；
+    # 1. 对于最下面的点，也添加了左右控制；# 这里的最底层可能不一定是5.5，对于那些提前结束的点，bottom可能是4.5或更小的值。
     # 2. 对于-0.5，添加了上方控制。
-    if row_list[row_index] == 5.5:
+    if int(row_list[row_index]) != row_list[row_index] and row_list[row_index] > 0:
         pass
         row_df = text_df[text_df["row"] == row_list[row_index]]
         for index in range(row_df.shape[0]):

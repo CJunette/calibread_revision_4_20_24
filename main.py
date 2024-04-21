@@ -25,7 +25,7 @@ if __name__ == '__main__':
     # TODO 目前有2个思路，一是把每个iter中变化的point pair标记出来；二是在每次iter中，保留一部分上次的点，再进行梯度下降。
     calibrate_in_batch("simple_linear_weight")
 
-    # visualize_cali_grad_process(16, 1, 0)
+    # visualize_cali_grad_process(18, 1, 1)
     # visualize_cali_grad_process(16, 1, 1)
     # visualize_all_subject_cali_grad_process(10, 1)
     # visualize_cali_grad_result(16, 1, 1)
