@@ -511,7 +511,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
         # 将前后两次不同的匹配点保存到random_selected_point_pair_differ中。
         if len(last_selected_point_pair_info_list) == 0:
-            random_selected_point_pair_differ = []
+            random_selected_point_pair_differ = random_selected_point_pair_list
             random_selected_point_pair_same = random_selected_point_pair_list
             last_selected_point_pair_info_list = random_selected_info_list
         else:
