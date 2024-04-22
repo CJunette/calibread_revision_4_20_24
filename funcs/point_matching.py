@@ -24,7 +24,7 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
         # 在point_matching过程中，因为一定要给reading point添加一个匹配的text point，所以可能会出现距离极长的匹配。
         # 这种匹配应该在weight进行额外的处理，下面用distance和distance_threshold的比值作为ratio，去修改weight。
         distance = filtered_distance_of_all_text[gaze_index][0]
-        ratio = min(1, distance / distance_threshold)
+        ratio = min(1, distance_threshold / distance)
         point_pair = [filtered_reading_coordinates[gaze_index], text_coordinate[filtered_indices_of_all_text[gaze_index][0]]]
         if text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["word"] == "blank_supplement":
             weight = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["penalty"] * ratio
@@ -318,6 +318,9 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
                                  distance_threshold):
     np.random.seed(configs.random_seed)
+
+    # TODO 这里2个小思路：1，第二步中，对于blank_supplement，应该把最终的weight和距离相关，距离越小weight绝对值越大。（因为目前不同方向的blank_supplement不会将gaze推向更远处）
+    #  2. 第一步中，似乎不应额外添加超过distance threshold随机选择所有点做点对的情况。匹配还是在行内进行。将blank_supplement都放到第二步去做。
 
     with multiprocessing.Pool(configs.number_of_process) as pool:
         # 1. 首先遍历所有的reading point，找到与其row label一致的、距离最近的text point，然后将这些匹配点加入到point_pair_list中。

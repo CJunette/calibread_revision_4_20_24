@@ -24,8 +24,8 @@ if __name__ == '__main__':
 
     calibrate_in_batch("simple_linear_weight")
 
-    # visualize_cali_grad_process(18, 1, 0)
+    # visualize_cali_grad_process(27, 1, 8)
     # visualize_cali_grad_process(18, 1, 1)
     # visualize_all_subject_cali_grad_process(19, 1)
-    # visualize_cali_grad_result(16, 1, 1)
+    # visualize_cali_grad_result(27, 1, 8)
     # visualize_all_subject_cali_grad_result(19, 1)

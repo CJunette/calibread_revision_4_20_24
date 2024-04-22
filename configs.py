@@ -1,7 +1,7 @@
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 20
+file_index = 27
 
 random_seed = 0
 number_of_process = 8
@@ -33,19 +33,19 @@ weight_divisor = 5
 weight_intercept = 0.01
 completion_weight = 4
 right_down_corner_unmatched_ratio = 1
-left_boundary_ratio = 1.25
-right_boundary_ratio = 3.5
-top_boundary_ratio = 0.75
-bottom_boundary_ratio = 0.75
+left_boundary_ratio = 2
+right_boundary_ratio = 4
+top_boundary_ratio = 1.5
+bottom_boundary_ratio = 1
 left_boundary_distance_threshold_ratio = 1.25
 right_boundary_distance_threshold_ratio = 1.25
-top_boundary_distance_threshold_ratio = 0.25
-bottom_boundary_distance_threshold_ratio = 0.25
+top_boundary_distance_threshold_ratio = 1
+bottom_boundary_distance_threshold_ratio = 1
 boundary_select_ratio = 1
 supplement_select_ratio = 1
 random_select_ratio_for_point_pair = 0.1
 gradient_descent_iteration_threshold = 500
-last_iteration_ratio = 0.5
+last_iteration_ratio = 0.25
 
 training_index_list = [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 

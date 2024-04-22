@@ -59,7 +59,7 @@ def _visualize_reading_points(ax, reading_data, transform_matrix, point_color):
     #     ax.scatter(gaze_point_after_transform[0], gaze_point_after_transform[1], c=point_color, s=1)
 
 
-def _visualize_different_point_pair(ax, different_point_pair):
+def _visualize_different_point_pair(ax, different_point_pair, different_weight):
     if len(different_point_pair) == 0:
         return
     gaze_x_list = []
@@ -67,6 +67,10 @@ def _visualize_different_point_pair(ax, different_point_pair):
     cali_x_list = []
     cali_y_list = []
     line_segment_list = []
+    line_color_list = []
+    line_alpha_list = []
+    max_weight = max(different_weight)
+    min_weight = min(different_weight)
 
     for point_pair_index in range(len(different_point_pair)):
         gaze_x_list.append(different_point_pair[point_pair_index][0][0])
@@ -74,14 +78,27 @@ def _visualize_different_point_pair(ax, different_point_pair):
         cali_x_list.append(different_point_pair[point_pair_index][1][0])
         cali_y_list.append(different_point_pair[point_pair_index][1][1])
         line_segment_list.append([different_point_pair[point_pair_index][0], different_point_pair[point_pair_index][1]])
+        current_weight = different_weight[point_pair_index]
+        if current_weight > 0:
+            # red_ratio = current_weight / max_weight * 0.7 + 0.3
+            # color = (red_ratio, 0.2, 0.2)
+            color = "red"
+            alpha = current_weight / max_weight * 0.7 + 0.3
+        else:
+            # blue = current_weight / min_weight * 0.7 + 0.3
+            # color = (0.2, 0.2, blue)
+            color = "blue"
+            alpha = current_weight / min_weight * 0.7 + 0.3
+        line_color_list.append(color)
+        line_alpha_list.append(alpha)
 
     ax.scatter(gaze_x_list, gaze_y_list, c="red", s=2)
     ax.scatter(cali_x_list, cali_y_list, c="black", s=2)
-    line_collection = LineCollection(line_segment_list, color="red", linewidths=1, zorder=3)
+    line_collection = LineCollection(line_segment_list, colors=line_color_list, alpha=line_alpha_list, linewidths=1, zorder=3)
     ax.add_collection(line_collection)
 
 
-def _visualize_process(reading_data, calibration_data, different_point_pair,
+def _visualize_process(reading_data, calibration_data, different_point_pair, different_weight,
                        transform_matrix_last_iter, transform_matrix,
                        file_index, model_index, subject_index, iteration_index):
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -93,7 +110,7 @@ def _visualize_process(reading_data, calibration_data, different_point_pair,
     _visualize_std_calibrate_points(ax, calibration_data[2])
     # _visualize_reading_points(ax, reading_data, transform_matrix_last_iter, "green")
     # _visualize_reading_points(ax, reading_data, transform_matrix, "orange")
-    _visualize_different_point_pair(ax, different_point_pair)
+    _visualize_different_point_pair(ax, different_point_pair, different_weight)
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix_last_iter, "green")
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix, "orange")
 
@@ -126,7 +143,7 @@ def visualize_cali_grad_process(file_index, model_index, subject_index):
     affine_matrix = np.dot(scale_matrix, affine_matrix)
     affine_matrix = np.dot(translate_matrix, affine_matrix)
 
-    _visualize_process(all_reading_data, calibration_data, [], np.eye(3), affine_matrix, file_index, model_index, subject_index, 0)
+    _visualize_process(all_reading_data, calibration_data, [], [], np.eye(3), affine_matrix, file_index, model_index, subject_index, 0)
 
     for index in range(2, len(calibrate_process) - 1):
         print(f"processing: {index - 1}")
@@ -138,7 +155,8 @@ def visualize_cali_grad_process(file_index, model_index, subject_index):
         transform_matrix = calibrate_process[index]["transform_matrix"]
         affine_matrix = np.dot(transform_matrix, affine_matrix)
 
-        _visualize_process(all_reading_data, calibration_data, log_file[index]["different_point_pair"], affine_matrix_last_iter, affine_matrix, file_index, model_index, subject_index, index - 1)
+        _visualize_process(all_reading_data, calibration_data, log_file[index]["different_point_pair"], log_file[index]["different_weight"],
+                           affine_matrix_last_iter, affine_matrix, file_index, model_index, subject_index, index - 1)
 
 
 def visualize_all_subject_cali_grad_process(file_index, model_index):

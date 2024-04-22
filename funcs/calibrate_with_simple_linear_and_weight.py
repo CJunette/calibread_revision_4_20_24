@@ -573,11 +573,14 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         # 将前后两次不同的匹配点保存到random_selected_point_pair_differ中。
         if len(last_selected_point_pair_info_list) == 0:
             random_selected_point_pair_differ = random_selected_point_pair_list
+            random_selected_weight_differ = random_selected_weight_list
         else:
             random_selected_point_pair_differ = []
+            random_selected_weight_differ = []
             for select_index in range(len(random_selected_info_list)):
                 if random_selected_info_list[select_index] not in last_selected_point_pair_info_list:
                     random_selected_point_pair_differ.append(random_selected_point_pair_list[select_index])
+                    random_selected_weight_differ.append(random_selected_weight_list[select_index])
 
         # 将上一轮的匹配点加入到这一轮的匹配点中。
         if len(last_selected_point_pair_info_list) == 0:
@@ -600,7 +603,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         #     learning_rate = 0.1
         # else:
         #     learning_rate = 0.1 - (iteration_index - max_iteration / 2) / (max_iteration / 2) * 0.09
-        learning_rate = 0.1
+        learning_rate = 1
         learning_rate_list.append(learning_rate)
 
         transform_matrix, gd_error, last_iteration_num, last_grad_norm = gradient_descent_with_torch(random_selected_point_pair_list, random_selected_weight_list,
@@ -637,7 +640,8 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
         with open(log_file_path, "a") as log_file:
             json.dump({"iteration_index": iteration_index, "avg_error": avg_distance, "last_iteration_num": last_iteration_num,
-                       "last_gd_error": gd_error, "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist(), "different_point_pair": random_selected_point_pair_differ}, log_file, indent=4)
+                       "last_gd_error": gd_error, "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist(),
+                       "different_point_pair": random_selected_point_pair_differ, "different_weight": random_selected_weight_differ}, log_file, indent=4)
             log_file.write(",\n")
 
     with open(log_file_path, "a") as log_file:
