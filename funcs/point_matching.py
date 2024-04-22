@@ -11,7 +11,6 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
                               filtered_indices_of_row, filtered_distances_of_row,
                               filtered_indices_of_all_text, filtered_distance_of_all_text,
                               distance_threshold, bool_weight):
-
     if filtered_distances_of_row[gaze_index][0] < distance_threshold:
         point_pair = [filtered_reading_coordinates[gaze_index], filtered_text_coordinate[filtered_indices_of_row[gaze_index][0]]]
         prediction = filtered_text_data.iloc[filtered_indices_of_row[gaze_index][0]]["prediction"]
@@ -22,14 +21,17 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
         if not bool_weight:
             weight = 1
     else:
+        # 在point_matching过程中，因为一定要给reading point添加一个匹配的text point，所以可能会出现距离极长的匹配。
+        # 这种匹配应该在weight进行额外的处理，下面用distance和distance_threshold的比值作为ratio，去修改weight。
+        distance = filtered_distance_of_all_text[gaze_index][0]
+        ratio = min(1, distance / distance_threshold)
         point_pair = [filtered_reading_coordinates[gaze_index], text_coordinate[filtered_indices_of_all_text[gaze_index][0]]]
         if text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["word"] == "blank_supplement":
-            weight = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["penalty"]
+            weight = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["penalty"] * ratio
         else:
             prediction = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["prediction"]
             density = filtered_reading_density[gaze_index]
-            distance = filtered_distance_of_all_text[gaze_index][0]
-            weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
+            weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept) * ratio
         if not bool_weight:
             weight = 1
 
@@ -223,7 +225,7 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
                 info_list.extend(left_info_list)
                 data_type_list.extend(left_data_type_list)
 
-    row_df = row_df.sort_values(by=["col"], ascending=False)
+    row_df = row_df.sort_values(by=["col"], ascending=False) # 注意，这里有一个ascending=False。
     for index in range(row_df.shape[0]):
         if index < row_df.shape[0] - 1:
             word = row_df.iloc[index]["word"]

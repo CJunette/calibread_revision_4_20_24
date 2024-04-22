@@ -7,6 +7,8 @@ import configs
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull
+from sklearn.cluster import KMeans
 
 from funcs.gradient_descent import gradient_descent_with_torch
 from funcs.manual_calibrate_for_std import apply_transform_to_calibration, compute_distance_between_std_and_correction
@@ -412,6 +414,58 @@ def point_matching_single_process(reading_data, gaze_point_list_1d, text_data, f
     return point_pair_list, weight_list, row_label_list
 
 
+def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_list, info_list, n_cluster=8):
+    """
+    在Gradient Descent过程中，随机选择应该是区域均匀的选择，而不是随机选择。后者会导致点密度高的右上角在被选择完成后也密度更高，从而导致优化时右上角的权重更大。
+    因此，我们先对点进行聚类，然后根据聚类的体积，来确定每个聚类内部需要选择的点数量，最后再在聚类内部进行选择。
+    """
+    np.random.seed(iteration_index)
+
+    # 把之前简单的随机选择去掉。
+    # random_select_indices = np.random.choice(len(point_pair_list), int(configs.random_select_ratio_for_point_pair * len(point_pair_list)), replace=False)
+    # random_selected_point_pair_list = [point_pair_list[i] for i in random_select_indices]
+    # random_selected_weight_list = [weight_list[i] for i in random_select_indices]
+    # random_selected_info_list = [info_list[i] for i in random_select_indices]
+
+    gaze_point = [point_pair_list[i][0] for i in range(len(point_pair_list))]
+    kmeans = KMeans(n_clusters=n_cluster, random_state=0).fit(gaze_point)
+    cluster_labels = kmeans.labels_
+
+    cluster_gaze_point_list = [[] for _ in range(n_cluster)]
+    cluster_point_pair_list = [[] for _ in range(n_cluster)]
+    cluster_weight_list = [[] for _ in range(n_cluster)]
+    cluster_info_list = [[] for _ in range(n_cluster)]
+
+    for i in range(len(gaze_point)):
+        cluster_gaze_point_list[cluster_labels[i]].append(gaze_point[i])
+        cluster_point_pair_list[cluster_labels[i]].append(point_pair_list[i])
+        cluster_weight_list[cluster_labels[i]].append(weight_list[i])
+        cluster_info_list[cluster_labels[i]].append(info_list[i])
+
+    # 就散每个cluster的gaze point构成的convex hull的面积
+    cluster_volume_list = []
+    for i in range(len(cluster_gaze_point_list)):
+        points = np.array(cluster_gaze_point_list[i])
+        hull = ConvexHull(points)
+        cluster_volume_list.append(hull.volume)
+
+    select_num_list = []
+    target_num = int(len(gaze_point) * configs.random_select_ratio_for_point_pair)
+    for i in range(len(cluster_gaze_point_list)):
+        select_num_list.append(min(int(cluster_volume_list[i] / sum(cluster_volume_list) * target_num), len(cluster_gaze_point_list[i])))
+
+    random_selected_point_pair_list = []
+    random_selected_weight_list = []
+    random_selected_info_list = []
+    for i in range(len(cluster_gaze_point_list)):
+        indices = np.random.choice(len(cluster_gaze_point_list[i]), select_num_list[i], replace=False)
+        for index in indices:
+            random_selected_point_pair_list.append(cluster_point_pair_list[i][index])
+            random_selected_weight_list.append(cluster_weight_list[i][index])
+            random_selected_info_list.append(cluster_info_list[i][index])
+    return random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list
+
+
 def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_data, reading_data, calibration_data, max_iteration=100, distance_threshold=64):
     np.random.seed(configs.random_seed)
     # reading_data = reading_data.copy()
@@ -498,6 +552,8 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     learning_rate_list = []
     last_grad_norm = 10000
     last_selected_point_pair_info_list = []
+    last_selected_point_pair_list = []
+    last_weight_list = []
     for iteration_index in range(max_iteration):
         print("iteration_index: ", iteration_index)
         # 每次迭代前，创建一个类似effective_text_point_dict的字典，用于记录每个文本点被阅读点覆盖的次数。
@@ -512,27 +568,32 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
                                                                                effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
                                                                                distance_threshold)
 
-        np.random.seed(iteration_index)
-        random_select_indices = np.random.choice(len(point_pair_list), int(configs.random_select_ratio_for_point_pair * len(point_pair_list)), replace=False)
-        random_selected_point_pair_list = [point_pair_list[i] for i in random_select_indices]
-        random_selected_weight_list = [weight_list[i] for i in random_select_indices]
-        random_selected_info_list = [info_list[i] for i in random_select_indices]
+        random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list = random_select_for_gradient_descent(iteration_index, point_pair_list, weight_list, info_list)
 
         # 将前后两次不同的匹配点保存到random_selected_point_pair_differ中。
         if len(last_selected_point_pair_info_list) == 0:
             random_selected_point_pair_differ = random_selected_point_pair_list
-            random_selected_point_pair_same = random_selected_point_pair_list
-            last_selected_point_pair_info_list = random_selected_info_list
         else:
             random_selected_point_pair_differ = []
             for select_index in range(len(random_selected_info_list)):
                 if random_selected_info_list[select_index] not in last_selected_point_pair_info_list:
                     random_selected_point_pair_differ.append(random_selected_point_pair_list[select_index])
-            random_selected_point_pair_same = []
-            for select_index in range(len(random_selected_info_list)):
-                if random_selected_info_list[select_index] in last_selected_point_pair_info_list:
-                    random_selected_point_pair_same.append(random_selected_point_pair_list[select_index])
-            last_selected_point_pair_info_list = random_selected_info_list
+
+        # 将上一轮的匹配点加入到这一轮的匹配点中。
+        if len(last_selected_point_pair_info_list) == 0:
+            supplement_last_point_pair_list = []
+            supplement_last_weight_list = []
+        else:
+            select_index = np.random.choice(len(last_selected_point_pair_list), int(configs.last_iteration_ratio * len(last_selected_point_pair_list)), replace=False)
+            supplement_last_point_pair_list = [last_selected_point_pair_list[i] for i in select_index]
+            supplement_last_weight_list = [last_weight_list[i] for i in select_index]
+        random_selected_point_pair_list.extend(supplement_last_point_pair_list)
+        random_selected_weight_list.extend(supplement_last_weight_list)
+
+        # 更新数据。
+        last_selected_point_pair_info_list = random_selected_info_list
+        last_weight_list = random_selected_weight_list
+        last_selected_point_pair_list = random_selected_point_pair_list
 
         # learning_rate = 0.1
         # if iteration_index < max_iteration / 2:
@@ -576,7 +637,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
         with open(log_file_path, "a") as log_file:
             json.dump({"iteration_index": iteration_index, "avg_error": avg_distance, "last_iteration_num": last_iteration_num,
-                       "last_gd_error": gd_error.cpu().detach().numpy().tolist(), "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist(), "different_point_pair": random_selected_point_pair_differ}, log_file, indent=4)
+                       "last_gd_error": gd_error, "learning_rate": learning_rate, "transform_matrix": transform_matrix.tolist(), "different_point_pair": random_selected_point_pair_differ}, log_file, indent=4)
             log_file.write(",\n")
 
     with open(log_file_path, "a") as log_file:

@@ -54,6 +54,7 @@ def gradient_descent_with_torch(point_pairs, weight, last_iteration_num, learnin
         # error = torch.mean(torch.square(transformed_points - target_points) * weight_tensor)
         distance = transformed_points[:, :2] - target_points[:, :2]
         error = torch.mean(torch.square(distance) * weight_tensor)
+        error_value = error.cpu().detach().numpy().item()
         # penalty = torch.sum((transformed_points[:, 2] - target_points[:, 2]) ** 2) * 100
         # error += penalty
         error.backward()
@@ -63,14 +64,14 @@ def gradient_descent_with_torch(point_pairs, weight, last_iteration_num, learnin
 
         # print(f"iteration: {iteration_index}, error: {error}, grad_norm: {torch.norm(transform_matrix_raw.grad)}")
         last_iteration_num = iteration_index
-        last_error = error
+        # last_error = error_value
         if len(grad_norm_list) > 0:
             grad_norm_derivative_list.append(torch.norm(transform_matrix_raw.grad).cpu().detach() - grad_norm_list[-1])
         grad_norm_list.append(torch.norm(transform_matrix_raw.grad).cpu())
 
         if (final_transform_matrix_raw is None
-                or (abs(error) < 1000 and error * torch.norm(transform_matrix_raw.grad) < least_error * least_grad_norm)):
-            least_error = error
+                or (abs(error_value) < 1000 and error_value * torch.norm(transform_matrix_raw.grad) < least_error * least_grad_norm)):
+            least_error = error_value
             final_transform_matrix_raw = transform_matrix_raw.clone()
             least_grad_norm = torch.norm(transform_matrix_raw.grad)
             least_index = iteration_index
@@ -91,11 +92,11 @@ def gradient_descent_with_torch(point_pairs, weight, last_iteration_num, learnin
                     break
 
         if last_iteration_num > configs.gradient_descent_iteration_threshold and bool_stop:
-            last_error = error
+            last_error = error_value
             least_index = max_iterations
             break
         else:
-            last_error = error
+            last_error = error_value
 
     if least_index == max_iterations:
         transform_matrix = torch.concat([transform_matrix_raw, torch.tensor([[0, 0, 1]], dtype=torch.float32, requires_grad=False).cuda(0)], dim=0)

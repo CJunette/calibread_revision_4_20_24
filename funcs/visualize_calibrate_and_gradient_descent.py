@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 import os
 from matplotlib.collections import LineCollection
 
@@ -6,6 +7,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
+import configs
 from funcs.process_text_before_calibration import preprocess_text_in_batch
 from funcs.util_functions import change_2d_vector_to_homogeneous_vector, change_homogeneous_vector_to_2d_vector
 from read.read_calibrate_and_grad_descent import read_calibrate_and_grad_descent, read_all_subject_calibrate_and_grad_descent
@@ -141,8 +143,14 @@ def visualize_cali_grad_process(file_index, model_index, subject_index):
 
 def visualize_all_subject_cali_grad_process(file_index, model_index):
     cali_grad_list = read_all_subject_calibrate_and_grad_descent(file_index, model_index)
+
+    arg_list = []
     for subject_index in range(len(cali_grad_list)):
-        visualize_cali_grad_process(file_index, model_index, subject_index)
+        arg_list.append((file_index, model_index, subject_index))
+        # visualize_cali_grad_process(file_index, model_index, subject_index)
+
+    with multiprocessing.Pool(configs.number_of_process) as pool:
+        pool.starmap(visualize_cali_grad_process, arg_list)
 
 
 def visualize_cali_grad_result(file_index, model_index, subject_index):
