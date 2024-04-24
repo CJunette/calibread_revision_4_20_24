@@ -421,7 +421,6 @@ def _get_int_point_pairs(point_pair):
     return int_point_pair
 
 
-
 def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_data, reading_data, calibration_data, max_iteration=100, distance_threshold=64):
     np.random.seed(configs.random_seed)
     # reading_data = reading_data.copy()
@@ -559,12 +558,12 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         #     learning_rate = 0.1
         # else:
         #     learning_rate = 0.1 - (iteration_index - max_iteration / 2) / (max_iteration / 2) * 0.09
-        learning_rate = 0.1
+        learning_rate = 0.01
         learning_rate_list.append(learning_rate)
 
         # transform_matrix, gd_error, last_iteration_num, last_grad_norm = gradient_descent_affine(random_selected_point_pair_list, random_selected_weight_list,
         #                                                                                          learning_rate=learning_rate, last_iteration_num=last_iteration_num,
-        #                                                                                          max_iterations=5000, stop_grad_norm=1, grad_clip_value=1e8)
+        #                                                                                          max_iterations=2000, stop_grad_norm=1, grad_clip_value=1e8)
 
         transform_matrix, gd_error, last_iteration_num, last_grad_norm = gradient_descent_translate_rotate_shear_scale(random_selected_point_pair_list, random_selected_weight_list,
                                                                                                                        learning_rate=learning_rate, last_iteration_num=last_iteration_num,

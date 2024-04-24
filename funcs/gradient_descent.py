@@ -119,7 +119,7 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
     source_points = torch.tensor(source_points, dtype=torch.float32, requires_grad=False).cuda(0)
     target_points = torch.tensor(target_points, dtype=torch.float32, requires_grad=False).cuda(0)
 
-    weight_tensor = torch.tensor(weight, dtype=torch.float32, requires_grad=False).unsqueeze(-1).cuda(0)
+    weight_tensor = torch.tensor(weight, dtype=torch.float32, requires_grad=False).cuda(0)
 
     theta = torch.tensor(0, dtype=torch.float32, requires_grad=True, device='cuda:0')
     tx = torch.tensor([0], dtype=torch.float32, requires_grad=True, device='cuda:0')
@@ -170,8 +170,10 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
         transform_matrix = torch.matmul(translate_matrix, torch.matmul(rotate_matrix, torch.matmul(shear_matrix, scale_matrix)))
         transformed_points = torch.matmul(transform_matrix, source_points.transpose(0, 1)).transpose(0, 1)
 
-        distance = transformed_points[:, :2] - target_points[:, :2]
-        error_distance = torch.mean(torch.norm(distance) * weight_tensor)
+        offset = transformed_points[:, :2] - target_points[:, :2]
+        distance = torch.norm(offset, dim=1)
+        weighted_distance = torch.mul(distance, weight_tensor)
+        error_distance = torch.mean(weighted_distance)
         error_rotate = torch.square(theta / configs.theta_error_threshold) * configs.theta_error_ratio
         error_scale = (torch.square((sx - 1) / configs.scale_error_threshold) + torch.square((sy - 1) / configs.scale_error_threshold)) * configs.scale_ratio
         error_shear = (torch.square(shx / configs.shear_error_threshold) + torch.square(shy / configs.shear_error_threshold)) * configs.shear_ratio
@@ -194,7 +196,7 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
         grad_norm_list.append(grad_norm.cpu().detach())
 
         if (final_transform_matrix_raw is None
-                or (abs(error_value) < 1000 and error_value * grad_norm < least_error * least_grad_norm)):
+                or (abs(error_value) < 1000 and error_value < least_error)):
             least_error = error_value
             final_transform_matrix_raw = transform_matrix.clone()
             least_grad_norm = grad_norm

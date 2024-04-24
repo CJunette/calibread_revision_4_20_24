@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import multiprocessing
 from sklearn.neighbors import NearestNeighbors
@@ -24,6 +26,7 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
                 weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
             else:
                 weight = penalty
+                # weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
         else:
             weight = 1
     else:
@@ -31,7 +34,8 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
         # 这种匹配应该在weight进行额外的处理，下面用distance和distance_threshold的比值作为ratio，去修改weight。
         # 经过调整，filtered_indices_of_all_text中不会再有blank_supplement。
         distance = filtered_distance_of_all_text[gaze_index][0]
-        ratio = min(1, distance_threshold / distance)
+        # ratio = min(1, distance_threshold / distance)
+        ratio = min(1, np.float_power(distance_threshold / 2 / distance, 2))
         point_pair = [filtered_reading_coordinates[gaze_index], text_coordinate[filtered_indices_of_all_text[gaze_index][0]]]
         if text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["word"] == "blank_supplement":
             weight = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["penalty"] * ratio
@@ -115,7 +119,6 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
                 continue
             elif data_type_input == "right" and gaze_point[0] >= x:
                 continue
-
             point_pair = [gaze_point, [x, y]]
             if data_type_input == "left":
                 if row_index <= 0:

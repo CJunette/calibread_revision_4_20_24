@@ -27,9 +27,9 @@ if __name__ == '__main__':
     #  另一个思路是，不用cluster进行选点，转而将屏幕等分为若干个区域，在每个区域内随机选点。
     calibrate_in_batch("simple_linear_weight")
 
-    # visualize_cali_grad_result(42, 1, 0)
-    # visualize_all_subject_cali_grad_result(42, 1)
-    visualize_cali_grad_process(42, 1, 0)
+    # visualize_cali_grad_process(46, 1, 0)
     # visualize_cali_grad_process(18, 1, 1)
-    # visualize_all_subject_cali_grad_process(42, 1)
+    visualize_all_subject_cali_grad_process(48, 1)
+    # visualize_cali_grad_result(42, 1, 0)
+    visualize_all_subject_cali_grad_result(48, 1)
 

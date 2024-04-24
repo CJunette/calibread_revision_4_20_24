@@ -3,7 +3,7 @@ import numpy as np
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 42
+file_index = 48
 
 random_seed = 0
 number_of_process = 8
@@ -15,6 +15,8 @@ text_width = 40
 text_height = 64
 row_num = 6
 col_num = 30
+left_right_padding = 3
+up_down_padding = 1
 
 left_top_text_center = [380, 272]
 right_down_text_center = [1540, 592]
@@ -32,15 +34,15 @@ empty_penalty = -0.001
 
 bool_weight = True
 weight_divisor = 5
-weight_intercept = 0.01
-completion_weight = 4
+weight_intercept = 0.2
+completion_weight = 6
 right_down_corner_unmatched_ratio = 1
 punctuation_ratio = 0.1
 left_boundary_ratio = 1200
-right_boundary_ratio = 1200
+right_boundary_ratio = 800
 top_boundary_ratio = 800
 bottom_boundary_ratio = 300
-left_boundary_distance_threshold_ratio = 1
+left_boundary_distance_threshold_ratio = 1.25
 right_boundary_distance_threshold_ratio = 1
 top_boundary_distance_threshold_ratio = 0.5
 bottom_boundary_distance_threshold_ratio = 0.5

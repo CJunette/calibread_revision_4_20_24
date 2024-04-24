@@ -54,7 +54,7 @@ def _visualize_reading_points(ax, reading_data, transform_matrix, point_color):
     gaze_point_list = [np.dot(transform_matrix, gaze_point) for gaze_point in gaze_point_list]
     gaze_point_list = np.array([change_homogeneous_vector_to_2d_vector(gaze_point) for gaze_point in gaze_point_list])
 
-    ax.scatter(gaze_points[:, 0], gaze_points[:, 1], c=point_color, s=1)
+    ax.scatter(gaze_point_list[:, 0], gaze_point_list[:, 1], c=point_color, s=1, alpha=0.2)
     # for gaze_point_after_transform in gaze_point_list:
     #     ax.scatter(gaze_point_after_transform[0], gaze_point_after_transform[1], c=point_color, s=1)
 
@@ -108,8 +108,8 @@ def _visualize_process(reading_data, calibration_data, point_pair, weight,
 
     # 生成标准校准点。
     _visualize_std_calibrate_points(ax, calibration_data[2])
-    # _visualize_reading_points(ax, reading_data, transform_matrix_last_iter, "green")
-    # _visualize_reading_points(ax, reading_data, transform_matrix, "orange")
+    _visualize_reading_points(ax, reading_data, transform_matrix_last_iter, "#77EE77")
+    _visualize_reading_points(ax, reading_data, transform_matrix, "#DDAA33")
     _visualize_point_pair(ax, point_pair, weight)
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix_last_iter, "green")
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix, "orange")

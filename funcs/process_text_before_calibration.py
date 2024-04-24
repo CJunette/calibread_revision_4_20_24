@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 import configs
@@ -42,8 +44,8 @@ def _add_boundary_points_to_text_data(text_sorted_mapping_with_prediction_list, 
             col_list.sort()
 
             new_points = []
-            left_right_padding = 3
-            up_down_padding = 1
+            left_right_padding = configs.left_right_padding
+            up_down_padding = configs.up_down_padding
 
             # 如果某一行内本身就存在一些空白点，则将其添加进去。如果没有空白点，则添加首尾的边界点。
             min_col = min(col_list)
@@ -105,8 +107,8 @@ def _add_penalty_to_text_data(text_sorted_mapping_with_prediction_list, model_in
 
         blank_supplement_col_list = df[df["word"] == "blank_supplement"]["col"].unique().tolist()
         blank_supplement_col_below_zero_list = [blank_supplement_col_list[i] for i in range(len(blank_supplement_col_list)) if blank_supplement_col_list[i] < 0]
-        left_attract_supplement_threshold = -3 if len(blank_supplement_col_below_zero_list) > 0 else 0
-        # left_attract_supplement_threshold = 0
+        # left_attract_supplement_threshold = -3 if len(blank_supplement_col_below_zero_list) > 0 else 0
+        left_attract_supplement_threshold = 0
 
         for index, row in df.iterrows():
             word = row["word"]
@@ -116,13 +118,18 @@ def _add_penalty_to_text_data(text_sorted_mapping_with_prediction_list, model_in
             # 添加的点按空白处理。
             if word == "blank_supplement":
                 # 对于最左上端的点，惩罚项为1，保证它能够吸引reading points。
-                if row_index < 0 and (left_attract_supplement_threshold <= col_index < configs.col_num / 6):
+                if row_index < 0 and (0 <= col_index < configs.col_num / 6):
                     penalty = 1
-                elif row_index == 0 and (left_attract_supplement_threshold <= col_index < configs.col_num / 6):
+                elif row_index == 0 and (0 <= col_index < configs.col_num / 6):
                     penalty = 1
                 # 对于其他点，惩罚项为负，保证他们会排斥reading points。
                 else:
-                    penalty = min(penalty, configs.empty_penalty)
+                    if col_index < 0:
+                        penalty = min(penalty, configs.empty_penalty * abs(col_index))
+                    elif col_index >= configs.col_num:
+                        penalty = min(penalty, configs.empty_penalty * (col_index - configs.col_num + 1))
+                    else:
+                        penalty = min(penalty, configs.empty_penalty)
             else:
                 # 非添加的点分多种情况处理。惩罚项最终按更大的计算。
                 # 1. 标点符号
