@@ -22,10 +22,14 @@ if __name__ == '__main__':
 
     # compute_and_save_gaze_density() # 读取reading_after_cluster中的数据，重新计算gaze density并保存。
 
+    # TODO 目前由于右下角的注视点过少，导致优化时右下角始终会向外偏离。
+    #  我觉得一个可能的思路是把affine_matrix拆成具体的几个变换矩阵，然后梯度下降时对矩阵做额外的限制。
+    #  另一个思路是，不用cluster进行选点，转而将屏幕等分为若干个区域，在每个区域内随机选点。
     calibrate_in_batch("simple_linear_weight")
 
-    # visualize_cali_grad_process(27, 1, 8)
+    # visualize_cali_grad_result(42, 1, 0)
+    # visualize_all_subject_cali_grad_result(42, 1)
+    visualize_cali_grad_process(42, 1, 0)
     # visualize_cali_grad_process(18, 1, 1)
-    # visualize_all_subject_cali_grad_process(19, 1)
-    # visualize_cali_grad_result(27, 1, 8)
-    # visualize_all_subject_cali_grad_result(19, 1)
+    # visualize_all_subject_cali_grad_process(42, 1)
+

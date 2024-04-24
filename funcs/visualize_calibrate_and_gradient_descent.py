@@ -59,7 +59,7 @@ def _visualize_reading_points(ax, reading_data, transform_matrix, point_color):
     #     ax.scatter(gaze_point_after_transform[0], gaze_point_after_transform[1], c=point_color, s=1)
 
 
-def _visualize_different_point_pair(ax, different_point_pair, different_weight):
+def _visualize_point_pair(ax, different_point_pair, different_weight):
     if len(different_point_pair) == 0:
         return
     gaze_x_list = []
@@ -88,7 +88,7 @@ def _visualize_different_point_pair(ax, different_point_pair, different_weight):
             # blue = current_weight / min_weight * 0.7 + 0.3
             # color = (0.2, 0.2, blue)
             color = "blue"
-            alpha = current_weight / min_weight * 0.7 + 0.3
+            alpha = current_weight / min_weight * 0.6 + 0.4
         line_color_list.append(color)
         line_alpha_list.append(alpha)
 
@@ -98,7 +98,7 @@ def _visualize_different_point_pair(ax, different_point_pair, different_weight):
     ax.add_collection(line_collection)
 
 
-def _visualize_process(reading_data, calibration_data, different_point_pair, different_weight,
+def _visualize_process(reading_data, calibration_data, point_pair, weight,
                        transform_matrix_last_iter, transform_matrix,
                        file_index, model_index, subject_index, iteration_index):
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -110,7 +110,7 @@ def _visualize_process(reading_data, calibration_data, different_point_pair, dif
     _visualize_std_calibrate_points(ax, calibration_data[2])
     # _visualize_reading_points(ax, reading_data, transform_matrix_last_iter, "green")
     # _visualize_reading_points(ax, reading_data, transform_matrix, "orange")
-    _visualize_different_point_pair(ax, different_point_pair, different_weight)
+    _visualize_point_pair(ax, point_pair, weight)
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix_last_iter, "green")
     _visualize_calibrate_points(ax, calibration_data[1], transform_matrix, "orange")
 
@@ -155,7 +155,7 @@ def visualize_cali_grad_process(file_index, model_index, subject_index):
         transform_matrix = calibrate_process[index]["transform_matrix"]
         affine_matrix = np.dot(transform_matrix, affine_matrix)
 
-        _visualize_process(all_reading_data, calibration_data, log_file[index]["different_point_pair"], log_file[index]["different_weight"],
+        _visualize_process(all_reading_data, calibration_data, log_file[index]["full_point_pair"], log_file[index]["full_weight"],
                            affine_matrix_last_iter, affine_matrix, file_index, model_index, subject_index, index - 1)
 
 

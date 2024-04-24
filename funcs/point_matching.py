@@ -1,6 +1,8 @@
 import numpy as np
 import multiprocessing
 from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import ConvexHull
+from sklearn.cluster import KMeans
 
 import configs
 
@@ -11,18 +13,23 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
                               filtered_indices_of_row, filtered_distances_of_row,
                               filtered_indices_of_all_text, filtered_distance_of_all_text,
                               distance_threshold, bool_weight):
-    if filtered_distances_of_row[gaze_index][0] < distance_threshold:
+    if filtered_distances_of_row[gaze_index][0] < distance_threshold * configs.text_distance_threshold_ratio:
         point_pair = [filtered_reading_coordinates[gaze_index], filtered_text_coordinate[filtered_indices_of_row[gaze_index][0]]]
         prediction = filtered_text_data.iloc[filtered_indices_of_row[gaze_index][0]]["prediction"]
+        penalty = filtered_text_data.iloc[filtered_indices_of_row[gaze_index][0]]["penalty"]
         density = filtered_reading_density[gaze_index]
         distance = filtered_distances_of_row[gaze_index][0]
-        # weight = 1 / abs(density - prediction) * 5
-        weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
-        if not bool_weight:
+        if bool_weight:
+            if penalty > 0:
+                weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
+            else:
+                weight = penalty
+        else:
             weight = 1
     else:
         # 在point_matching过程中，因为一定要给reading point添加一个匹配的text point，所以可能会出现距离极长的匹配。
         # 这种匹配应该在weight进行额外的处理，下面用distance和distance_threshold的比值作为ratio，去修改weight。
+        # 经过调整，filtered_indices_of_all_text中不会再有blank_supplement。
         distance = filtered_distance_of_all_text[gaze_index][0]
         ratio = min(1, distance_threshold / distance)
         point_pair = [filtered_reading_coordinates[gaze_index], text_coordinate[filtered_indices_of_all_text[gaze_index][0]]]
@@ -97,6 +104,7 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
         if distances[0][point_index] < distance_threshold * distance_ratio:
             gaze_index = indices[0][point_index]
             gaze_point = reading_data[text_index].iloc[gaze_index][["gaze_x", "gaze_y"]].values.tolist()
+            # ratio = min(1, distance_threshold * distance_ratio / distances[0][point_index])
 
             # 对于不同方向的文字，我们会进行筛选。如对于bottom的文字，指考虑那些gaze_y < y的注视点，避免将注视点越推越远。
             if data_type_input == "top" and gaze_point[1] <= y:
@@ -111,13 +119,15 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
             point_pair = [gaze_point, [x, y]]
             if data_type_input == "left":
                 if row_index <= 0:
-                    weight = row_df.iloc[col_index]["penalty"]
+                    weight = row_df.iloc[col_index]["penalty"] # 为了让左上角的数据不出问题，我将左上角blank_supplement的penalty都设置为了1（而非负数）。
                 else:
                     weight = configs.empty_penalty * configs.left_boundary_ratio
             elif data_type_input == "top":
                 weight = row_df.iloc[col_index]["penalty"]
             else:
                 weight = configs.empty_penalty * boundary_ratio
+
+            # weight = weight * ratio
             info = (text_index, row_index, gaze_index, int(x), int(y))
             data_type = data_type_input
 
@@ -147,17 +157,6 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
         for index in range(row_df.shape[0]):
             x = row_df.iloc[index]["x"]
             y = row_df.iloc[index]["y"]
-            # distances, indices = reading_nbrs_list[text_index].kneighbors([[x, y]])
-            # for point_index in range(len(indices[0])):
-            #     if distances[0][point_index] < distance_threshold * configs.bottom_boundary_distance_threshold_ratio:
-            #         gaze_index = indices[0][point_index]
-            #         gaze_point = reading_data[text_index].iloc[gaze_index][["gaze_x", "gaze_y"]].values.tolist()
-            #         point_pair = [gaze_point, [x, y]]
-            #         weight = configs.empty_penalty * configs.bottom_boundary_ratio
-            #         info = [text_index, row_index, gaze_index, x, y]
-            #         data_type = "bottom"
-            #     else:
-            #         break
             bottom_point_pair_list, bottom_weight_list, bottom_info_list, bottom_data_type_list = _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
                                                                                                                                          text_index, row_df, row_index, index, x, y,
                                                                                                                                          distance_threshold,
@@ -168,7 +167,7 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
             weight_list.extend(bottom_weight_list)
             info_list.extend(bottom_info_list)
             data_type_list.extend(bottom_data_type_list)
-    elif row_list[row_index] == -0.5:
+    elif int(row_list[row_index]) != row_list[row_index] and row_list[row_index] < 0:
         pass
         row_df = text_df[text_df["row"] == row_list[row_index]]
         for index in range(row_df.shape[0]):
@@ -192,28 +191,14 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
 
     row_df = row_df.sort_values(by=["col"])
     for index in range(row_df.shape[0]):
-        if index < row_df.shape[0] - 1:
+        # if index < row_df.shape[0] - 1:
+        if index < row_df.shape[0]:
             word = row_df.iloc[index]["word"]
-            next_word = row_df.iloc[index + 1]["word"]
-            if (word == "blank_supplement" or word.strip() == "") and (next_word != "blank_supplement" and next_word.strip() != ""):
+            # next_word = row_df.iloc[index + 1]["word"]
+            # if (word == "blank_supplement" or word.strip() == "") and (next_word != "blank_supplement" and next_word.strip() != ""):
+            if (word == "blank_supplement" or word.strip() == "") and row_df.iloc[index]["col"] < configs.col_num / 2:
                 x = row_df.iloc[index]["x"]
                 y = row_df.iloc[index]["y"]
-                # distances, indices = reading_nbrs_list[text_index].kneighbors([[x, y]])
-                # for point_index in range(len(indices[0])):
-                #     if distances[0][point_index] < distance_threshold * configs.left_boundary_distance_threshold_ratio:
-                #         gaze_index = indices[0][point_index]
-                #         gaze_point = reading_data[text_index].iloc[gaze_index][["gaze_x", "gaze_y"]].values.tolist()
-                #         point_pair = [gaze_point, [x, y]]
-                #         if row_index <= 0:
-                #             weight = row_df.iloc[index]["penalty"]
-                #         else:
-                #             weight = configs.empty_penalty * configs.left_boundary_ratio
-                #         info = [text_index, row_index, gaze_index, x, y]
-                #         data_type = "left"
-                #     else:
-                #         break
-                # # 确保只对最左侧的空格点添加一次匹配。
-                # break
                 left_point_pair_list, left_weight_list, left_info_list, left_data_type_list = _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
                                                                                                                                      text_index, row_df, row_index, index, x, y,
                                                                                                                                      distance_threshold,
@@ -227,25 +212,14 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
 
     row_df = row_df.sort_values(by=["col"], ascending=False) # 注意，这里有一个ascending=False。
     for index in range(row_df.shape[0]):
+        # if index < row_df.shape[0]:
         if index < row_df.shape[0] - 1:
             word = row_df.iloc[index]["word"]
-            next_word = row_df.iloc[index + 1]["word"]
-            if (word == "blank_supplement" or word.strip() == "") and (next_word != "blank_supplement" and next_word.strip() != ""):
+            # next_word = row_df.iloc[index + 1]["word"]
+            # if (word == "blank_supplement" or word.strip() == "") and (next_word != "blank_supplement" and next_word.strip() != ""):
+            if (word == "blank_supplement" or word.strip() == "") and row_df.iloc[index]["col"] >= configs.col_num / 2:
                 x = row_df.iloc[index]["x"]
                 y = row_df.iloc[index]["y"]
-                # distances, indices = reading_nbrs_list[text_index].kneighbors([[x, y]])
-                # for point_index in range(len(indices[0])):
-                #     if distances[0][point_index] < distance_threshold * configs.right_boundary_distance_threshold_ratio:
-                #         gaze_index = indices[0][point_index]
-                #         gaze_point = reading_data[text_index].iloc[gaze_index][["gaze_x", "gaze_y"]].values.tolist()
-                #         point_pair = [gaze_point, [x, y]]
-                #         weight = configs.empty_penalty * configs.right_boundary_ratio
-                #         info = [text_index, row_index, gaze_index, x, y]
-                #         data_type = "right"
-                #     else:
-                #         break
-                # # 确保只对最右侧的空格点添加一次匹配。
-                # break
                 right_point_pair_list, right_weight_list, right_info_list, right_data_type_list = _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
                                                                                                                                          text_index, row_df, row_index, index, x, y,
                                                                                                                                          distance_threshold,
@@ -260,54 +234,118 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
     return data_type_list, point_pair_list, weight_list, info_list
 
 
-def random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list, supplement_row_label_list, select_ratio):
+def random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list, supplement_info_list, select_ratio):
     if len(configs.training_index_list) > 16:
         supplement_select_indices = np.random.choice(len(supplement_point_pair_list), min(len(supplement_point_pair_list), max(int(len(point_pair_list) * select_ratio), 1)), replace=False)
         supplement_point_pair_list = [supplement_point_pair_list[i] for i in supplement_select_indices]
         supplement_weight_list = [supplement_weight_list[i] for i in supplement_select_indices]
-        supplement_row_label_list = [supplement_row_label_list[i] for i in supplement_select_indices]
+        supplement_info_list = [supplement_info_list[i] for i in supplement_select_indices]
 
-    return supplement_point_pair_list, supplement_weight_list, supplement_row_label_list
+    return supplement_point_pair_list, supplement_weight_list, supplement_info_list
 
 
-def step_4_supplement_num(point_pair_list, weight_list, row_label_list,
-                          supplement_point_pair_list, supplement_weight_list, supplement_row_label_list,
-                          left_point_pair_list, left_weight_list, left_row_label_list,
-                          right_point_pair_list, right_weight_list, right_row_label_list,
+def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_list, info_list, ratio, n_cluster=8):
+    """
+    在Gradient Descent过程中，随机选择应该是区域均匀的选择，而不是随机选择。后者会导致点密度高的右上角在被选择完成后也密度更高，从而导致优化时右上角的权重更大。
+    因此，我们先对点进行聚类，然后根据聚类的体积，来确定每个聚类内部需要选择的点数量，最后再在聚类内部进行选择。
+    """
+    if len(point_pair_list) == 0:
+        return point_pair_list, weight_list, info_list
+    elif ratio == 1:
+        return point_pair_list, weight_list, info_list
+
+    np.random.seed(iteration_index)
+
+    # 把之前简单的随机选择去掉。
+    # random_select_indices = np.random.choice(len(point_pair_list), int(configs.random_select_ratio_for_point_pair * len(point_pair_list)), replace=False)
+    # random_selected_point_pair_list = [point_pair_list[i] for i in random_select_indices]
+    # random_selected_weight_list = [weight_list[i] for i in random_select_indices]
+    # random_selected_info_list = [info_list[i] for i in random_select_indices]
+
+    gaze_point = [point_pair_list[i][0] for i in range(len(point_pair_list))]
+    kmeans = KMeans(n_clusters=n_cluster, random_state=0, n_init=10).fit(gaze_point)
+    cluster_labels = kmeans.labels_
+
+    cluster_gaze_point_list = [[] for _ in range(n_cluster)]
+    cluster_point_pair_list = [[] for _ in range(n_cluster)]
+    cluster_weight_list = [[] for _ in range(n_cluster)]
+    cluster_info_list = [[] for _ in range(n_cluster)]
+
+    for i in range(len(gaze_point)):
+        cluster_gaze_point_list[cluster_labels[i]].append(gaze_point[i])
+        cluster_point_pair_list[cluster_labels[i]].append(point_pair_list[i])
+        cluster_weight_list[cluster_labels[i]].append(weight_list[i])
+        cluster_info_list[cluster_labels[i]].append(info_list[i])
+
+    # 就散每个cluster的gaze point构成的convex hull的面积
+    cluster_volume_list = []
+    for i in range(len(cluster_gaze_point_list)):
+        points = np.array(cluster_gaze_point_list[i])
+        hull = ConvexHull(points)
+        cluster_volume_list.append(hull.volume)
+
+    select_num_list = []
+    target_num = int(len(gaze_point) * ratio)
+    for i in range(len(cluster_gaze_point_list)):
+        select_num_list.append(min(int(cluster_volume_list[i] / sum(cluster_volume_list) * target_num), len(cluster_gaze_point_list[i])))
+
+    random_selected_point_pair_list = []
+    random_selected_weight_list = []
+    random_selected_info_list = []
+    for i in range(len(cluster_gaze_point_list)):
+        indices = np.random.choice(len(cluster_gaze_point_list[i]), select_num_list[i], replace=False)
+        for index in indices:
+            random_selected_point_pair_list.append(cluster_point_pair_list[i][index])
+            random_selected_weight_list.append(cluster_weight_list[i][index])
+            random_selected_info_list.append(cluster_info_list[i][index])
+    return random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list
+
+
+def step_4_supplement_num(iteration_index,
+                          point_pair_list, weight_list, row_label_list,
+                          supplement_point_pair_list, supplement_weight_list, supplement_info_list,
+                          left_point_pair_list, left_weight_list, left_info_list,
+                          right_point_pair_list, right_weight_list, right_info_list,
                           top_point_pair_list, top_weight_list, top_info_list,
-                          bottom_point_pair_list, bottom_weight_list, bottom_row_label_list):
+                          bottom_point_pair_list, bottom_weight_list, bottom_info_list):
     # 对于那些validation数量过少的情况，需要限制supplement point pair的数量，保证其与raw point pair的比例，避免出现过分的失调。这里的限制我修改过，看一下如果效果不好就还原回去。
-    supplement_point_pair_list, supplement_weight_list, supplement_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list,
-                                                                                                                             supplement_row_label_list, configs.supplement_select_ratio)
+    supplement_point_pair_list, supplement_weight_list, supplement_info_list = random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list,
+                                                                                                                        supplement_info_list, configs.supplement_select_ratio)
     # 对于那些validation数量过少的情况，需要限制boundary point pair的数量，保证其与raw point pair的比例，避免出现过分的失调。这里的限制我修改过，看一下如果效果不好就还原回去。
-    left_point_pair_list, left_weight_list, left_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, left_point_pair_list, left_weight_list, left_row_label_list,
-                                                                                                           configs.boundary_select_ratio)
-    right_point_pair_list, right_weight_list, right_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, right_point_pair_list, right_weight_list, right_row_label_list,
-                                                                                                              configs.boundary_select_ratio)
-    top_point_pair_list, top_weight_list, top_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, top_point_pair_list, top_weight_list, top_info_list,
+    left_point_pair_list, left_weight_list, left_info_list = random_select_for_supplement_point_pairs(point_pair_list, left_point_pair_list, left_weight_list, left_info_list,
+                                                                                                      configs.boundary_select_ratio)
+    right_point_pair_list, right_weight_list, right_info_list = random_select_for_supplement_point_pairs(point_pair_list, right_point_pair_list, right_weight_list, right_info_list,
+                                                                                                         configs.boundary_select_ratio)
+    top_point_pair_list, top_weight_list, top_info_list = random_select_for_supplement_point_pairs(point_pair_list, top_point_pair_list, top_weight_list, top_info_list,
                                                                                                         configs.boundary_select_ratio)
-    bottom_point_pair_list, bottom_weight_list, bottom_row_label_list = random_select_for_supplement_point_pairs(point_pair_list, bottom_point_pair_list, bottom_weight_list, bottom_row_label_list,
-                                                                                                                 configs.boundary_select_ratio)
+    bottom_point_pair_list, bottom_weight_list, bottom_info_list = random_select_for_supplement_point_pairs(point_pair_list, bottom_point_pair_list, bottom_weight_list, bottom_info_list,
+                                                                                                            configs.boundary_select_ratio)
+
+    # supplement_point_pair_list, supplement_weight_list, supplement_info_list = random_select_for_gradient_descent(iteration_index, supplement_point_pair_list, supplement_weight_list, supplement_info_list, configs.supplement_select_ratio, 4)
+    # left_point_pair_list, left_weight_list, left_info_list = random_select_for_gradient_descent(iteration_index, left_point_pair_list, left_weight_list, left_info_list, configs.boundary_select_ratio, 4)
+    # right_point_pair_list, right_weight_list, right_info_list = random_select_for_gradient_descent(iteration_index, right_point_pair_list, right_weight_list, right_info_list, configs.boundary_select_ratio, 4)
+    # top_point_pair_list, top_weight_list, top_info_list = random_select_for_gradient_descent(iteration_index, top_point_pair_list, top_weight_list, top_info_list, configs.boundary_select_ratio, 4)
+    # bottom_point_pair_list, bottom_weight_list, bottom_info_list = random_select_for_gradient_descent(iteration_index, bottom_point_pair_list, bottom_weight_list, bottom_info_list, configs.boundary_select_ratio, 4)
 
     point_pair_list.extend(supplement_point_pair_list)
     weight_list.extend(supplement_weight_list)
-    row_label_list.extend(supplement_row_label_list)
+    row_label_list.extend(supplement_info_list)
 
     point_pair_list.extend(left_point_pair_list)
     weight_list.extend(left_weight_list)
-    row_label_list.extend(left_row_label_list)
+    row_label_list.extend(left_info_list)
 
     point_pair_list.extend(right_point_pair_list)
     weight_list.extend(right_weight_list)
-    row_label_list.extend(right_row_label_list)
+    row_label_list.extend(right_info_list)
 
     point_pair_list.extend(top_point_pair_list)
     weight_list.extend(top_weight_list)
-    row_label_list.extend(top_row_label_list)
+    row_label_list.extend(top_info_list)
 
     point_pair_list.extend(bottom_point_pair_list)
     weight_list.extend(bottom_weight_list)
-    row_label_list.extend(bottom_row_label_list)
+    row_label_list.extend(bottom_info_list)
 
     return point_pair_list, weight_list, row_label_list
 
@@ -316,7 +354,7 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
                                  text_data, filtered_text_data_list,
                                  total_nbrs_list, row_nbrs_list,
                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
-                                 distance_threshold):
+                                 iteration_index, distance_threshold):
     np.random.seed(configs.random_seed)
 
     # TODO 这里2个小思路：1，第二步中，对于blank_supplement，应该把最终的weight和距离相关，距离越小weight绝对值越大。（因为目前不同方向的blank_supplement不会将gaze推向更远处）
@@ -403,7 +441,8 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
 
 
         # 4. 限制添加点的数量。
-        point_pair_list, weight_list, info_list = step_4_supplement_num(point_pair_list, weight_list, info_list,
+        point_pair_list, weight_list, info_list = step_4_supplement_num(iteration_index,
+                                                                        point_pair_list, weight_list, info_list,
                                                                         supplement_point_pair_list, supplement_weight_list, supplement_info_list,
                                                                         left_point_pair_list, left_weight_list, left_info_list,
                                                                         right_point_pair_list, right_weight_list, right_info_list,

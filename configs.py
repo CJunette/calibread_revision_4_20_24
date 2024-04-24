@@ -1,7 +1,9 @@
+import numpy as np
+
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 27
+file_index = 42
 
 random_seed = 0
 number_of_process = 8
@@ -26,26 +28,35 @@ epoch_num = 300
 
 location_penalty = 1
 punctuation_penalty = -0.001
-empty_penalty = -1
+empty_penalty = -0.001
 
 bool_weight = True
 weight_divisor = 5
 weight_intercept = 0.01
 completion_weight = 4
 right_down_corner_unmatched_ratio = 1
-left_boundary_ratio = 2
-right_boundary_ratio = 4
-top_boundary_ratio = 1.5
-bottom_boundary_ratio = 1
-left_boundary_distance_threshold_ratio = 1.25
-right_boundary_distance_threshold_ratio = 1.25
-top_boundary_distance_threshold_ratio = 1
-bottom_boundary_distance_threshold_ratio = 1
+punctuation_ratio = 0.1
+left_boundary_ratio = 1200
+right_boundary_ratio = 1200
+top_boundary_ratio = 800
+bottom_boundary_ratio = 300
+left_boundary_distance_threshold_ratio = 1
+right_boundary_distance_threshold_ratio = 1
+top_boundary_distance_threshold_ratio = 0.5
+bottom_boundary_distance_threshold_ratio = 0.5
+text_distance_threshold_ratio = 1
 boundary_select_ratio = 1
 supplement_select_ratio = 1
 random_select_ratio_for_point_pair = 0.1
 gradient_descent_iteration_threshold = 500
 last_iteration_ratio = 0.25
+
+theta_error_threshold = np.pi / 72
+scale_error_threshold = 0.15
+shear_error_threshold = 0.15
+theta_error_ratio = 100
+scale_ratio = 100
+shear_ratio = 100
 
 training_index_list = [0, 1, 2, 3, 4, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
