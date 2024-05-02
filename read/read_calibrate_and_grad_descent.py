@@ -26,3 +26,21 @@ def read_all_subject_calibrate_and_grad_descent(file_index, model_index):
 
     return cali_grad_list
 
+
+def read_calibrate_and_grad_descent_process_attribute(file_index, model_index, subject_index, attribute):
+    model_log = read_calibrate_and_grad_descent(file_index, model_index, subject_index)
+    attribute_list = []
+    for log_index, log_item in enumerate(model_log):
+        if log_index < 2:
+            continue
+        if log_index == len(model_log) - 1:
+            break
+        transform_matrix = log_item[attribute]
+        attribute_list.append(transform_matrix)
+
+    return attribute_list
+
+
+def read_calibrate_and_grad_descent_start_matrix_attribute(file_index, model_index, subject_index, attribute):
+    model_log = read_calibrate_and_grad_descent(file_index, model_index, subject_index)
+    return model_log[1][attribute]

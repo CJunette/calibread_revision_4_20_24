@@ -1,8 +1,9 @@
 import numpy as np
 from funcs.util_functions import change_homogeneous_vector_to_2d_vector, change_2d_vector_to_homogeneous_vector
+from read.read_calibration import read_calibration
 
 
-def apply_transform_to_calibration(subject_index, calibration_data, transform_matrix):
+def apply_transform_to_calibration(calibration_data, transform_matrix):
     gaze_list = calibration_data[0]
     avg_gaze_list = calibration_data[1]
     calibration_point_list = calibration_data[2]
@@ -69,4 +70,28 @@ def compute_distance_between_std_and_correction(avg_gaze_coordinate_after_transl
         distance_list.append(distance)
     avg_distance = np.mean(distance_list)
     return distance_list, avg_distance
+
+
+def evaluate_non_calibrate_for_all_subjects():
+    calibration_data = read_calibration("original_gaze_data")
+    error_list = []
+    for subject_index in range(len(calibration_data)):
+        avg_gaze_data = calibration_data[subject_index][1]
+        calibration_point_data = calibration_data[subject_index][2]
+        avg_gaze_list = []
+        calibration_point_list = []
+
+        for row_index in range(len(avg_gaze_data)):
+            for col_index in range(len(avg_gaze_data[row_index])):
+                avg_calibration_point_dict = avg_gaze_data[row_index][col_index]
+                calibration_point_dict = calibration_point_data[row_index][col_index]
+                avg_point = [avg_calibration_point_dict["avg_gaze_x"], avg_calibration_point_dict["avg_gaze_y"]]
+                calibration_point = [calibration_point_dict["point_x"], calibration_point_dict["point_y"]]
+                avg_gaze_list.append(avg_point)
+                calibration_point_list.append(calibration_point)
+
+        distance_list, avg_distance = compute_distance_between_std_and_correction(avg_gaze_list, calibration_point_list)
+        print(avg_distance)
+        error_list.append(avg_distance)
+    return error_list
 

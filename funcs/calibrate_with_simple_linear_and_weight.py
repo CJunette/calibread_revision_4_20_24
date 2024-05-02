@@ -430,6 +430,10 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         df.reset_index(drop=True, inplace=True)
         selected_reading_data.append(df)
 
+    # 之前的代码中，centroid对齐永远是25个reading_data一起对齐。这样必然造成问题，因此这里提前把reading_data中没必要的哪些数据都去掉。
+    for reading_index in configs.training_index_list:
+        selected_reading_data[reading_index].drop(index=selected_reading_data[reading_index].index, inplace=True)
+
     log_path = f"gradient_descent_log/{configs.file_index}"
     if not os.path.exists(log_path):
         os.makedirs(log_path)
@@ -438,14 +442,23 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     log_file_path = f"{log_path}/calibrate_with_simple_linear_and_weight-model_{model_index}-subject_{subject_index}.json"
     with open(log_file_path, "w") as log_file:
         log_file.write("[\n")
-        json.dump({"model_index": model_index, "subject_index": subject_index,
+        json.dump({"validation_index_list": np.setdiff1d(np.arange(configs.passage_num), configs.training_index_list).tolist(),
+                   "model_index": model_index, "subject_index": subject_index,
+                   "bool_weight": configs.bool_weight, "bool_text_weight": configs.bool_text_weight,
+                   "weight_divisor": configs.weight_divisor, "weight_intercept": configs.weight_intercept,
                    "location_penalty": configs.location_penalty, "punctuation_penalty": configs.punctuation_penalty,
                    "empty_penalty": configs.empty_penalty, "completion_weight": configs.completion_weight,
                    "right_down_corner_unmatched_ratio": configs.right_down_corner_unmatched_ratio,
                    "left_boundary_ratio": configs.left_boundary_ratio, "right_boundary_ratio": configs.right_boundary_ratio,
+                   "top_boundary_ratio": configs.top_boundary_ratio, "bottom_boundary_ratio": configs.bottom_boundary_ratio,
                    "left_boundary_distance_threshold_ratio": configs.left_boundary_distance_threshold_ratio,
                    "right_boundary_distance_threshold_ratio": configs.right_boundary_distance_threshold_ratio,
-                   "weight_divisor": configs.weight_divisor, "weight_intercept": configs.weight_intercept,
+                   "top_boundary_distance_threshold_ratio": configs.top_boundary_distance_threshold_ratio,
+                   "bottom_boundary_distance_threshold_ratio": configs.bottom_boundary_distance_threshold_ratio,
+                   "random_select_ratio_for_point_pair": configs.random_select_ratio_for_point_pair,
+                   "last_iteration_ratio": configs.last_iteration_ratio,
+                   "punctuation_ratio": configs.punctuation_ratio, "boundary_select_ratio": configs.boundary_select_ratio,
+                   "supplement_select_ratio": configs.supplement_select_ratio, "gradient_descent_iteration_threshold": configs.gradient_descent_iteration_threshold,
                    }, log_file, indent=4)
         log_file.write(",\n")
 
@@ -575,7 +588,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
 
         gaze_coordinates_before_translation_list, gaze_coordinates_after_translation_list, \
             avg_gaze_coordinate_before_translation_list, avg_gaze_coordinate_after_translation_list, \
-            calibration_point_list_modified = apply_transform_to_calibration(subject_index, calibration_data, total_transform_matrix)
+            calibration_point_list_modified = apply_transform_to_calibration(calibration_data, total_transform_matrix)
 
         # update selected_gaze_point_list_1d
         selected_gaze_point_list_1d = [change_2d_vector_to_homogeneous_vector(gaze_point) for gaze_point in selected_gaze_point_list_1d]
@@ -594,9 +607,6 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         print(f"average distance: {avg_distance}, last iteration num: {last_iteration_num}")
         last_iteration_num_list.append(last_iteration_num)
 
-        if avg_distance > 100000:
-            break
-
         int_random_selected_point_pair_differ = _get_int_point_pairs(random_selected_point_pair_differ)
         int_random_selected_point_pair = _get_int_point_pairs(random_selected_point_pair_list)
 
@@ -606,6 +616,9 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
                        "different_point_pair": int_random_selected_point_pair_differ, "different_weight": random_selected_weight_differ,
                        "full_point_pair": int_random_selected_point_pair, "full_weight": random_selected_weight_list}, log_file, indent=4)
             log_file.write(",\n")
+
+        if avg_distance > 5000:
+            break
 
     with open(log_file_path, "a") as log_file:
         json.dump({"finish": "finish"}, log_file, indent=4)

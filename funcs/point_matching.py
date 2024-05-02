@@ -15,6 +15,9 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
                               filtered_indices_of_row, filtered_distances_of_row,
                               filtered_indices_of_all_text, filtered_distance_of_all_text,
                               distance_threshold, bool_weight):
+    '''
+    将gaze point与text point进行匹配。首先匹配本行的，如果本行没有，再匹配所有text_point（但此时的weight会根据距离做调整，距离越大weight越小）。
+    '''
     if filtered_distances_of_row[gaze_index][0] < distance_threshold * configs.text_distance_threshold_ratio:
         point_pair = [filtered_reading_coordinates[gaze_index], filtered_text_coordinate[filtered_indices_of_row[gaze_index][0]]]
         prediction = filtered_text_data.iloc[filtered_indices_of_row[gaze_index][0]]["prediction"]
@@ -23,7 +26,10 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
         distance = filtered_distances_of_row[gaze_index][0]
         if bool_weight:
             if penalty > 0:
-                weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
+                if configs.bool_text_weight:
+                    weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
+                else:
+                    weight = penalty
             else:
                 weight = penalty
                 # weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
@@ -238,7 +244,7 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
 
 
 def random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list, supplement_info_list, select_ratio):
-    if len(configs.training_index_list) > 16:
+    if len(configs.training_index_list) > 0:
         supplement_select_indices = np.random.choice(len(supplement_point_pair_list), min(len(supplement_point_pair_list), max(int(len(point_pair_list) * select_ratio), 1)), replace=False)
         supplement_point_pair_list = [supplement_point_pair_list[i] for i in supplement_select_indices]
         supplement_weight_list = [supplement_weight_list[i] for i in supplement_select_indices]
@@ -256,7 +262,10 @@ def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_
         return point_pair_list, weight_list, info_list
     elif ratio == 1:
         return point_pair_list, weight_list, info_list
-
+    elif len(point_pair_list) < 400: # 尽量保证有400个点可以用于训练。
+        return point_pair_list, weight_list, info_list
+    elif len(point_pair_list) * ratio < 400:
+        ratio = 400 / len(point_pair_list)
     np.random.seed(iteration_index)
 
     # 把之前简单的随机选择去掉。
@@ -301,16 +310,18 @@ def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_
             random_selected_point_pair_list.append(cluster_point_pair_list[i][index])
             random_selected_weight_list.append(cluster_weight_list[i][index])
             random_selected_info_list.append(cluster_info_list[i][index])
+    # 将weight_list都转为float，避免当weight为0时出现的问题。
+    random_selected_weight_list = np.array(random_selected_weight_list, dtype=np.float32).tolist()
     return random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list
 
 
-def step_4_supplement_num(iteration_index,
-                          point_pair_list, weight_list, row_label_list,
-                          supplement_point_pair_list, supplement_weight_list, supplement_info_list,
-                          left_point_pair_list, left_weight_list, left_info_list,
-                          right_point_pair_list, right_weight_list, right_info_list,
-                          top_point_pair_list, top_weight_list, top_info_list,
-                          bottom_point_pair_list, bottom_weight_list, bottom_info_list):
+def step_4_select_supplement(iteration_index,
+                             point_pair_list, weight_list, row_label_list,
+                             supplement_point_pair_list, supplement_weight_list, supplement_info_list,
+                             left_point_pair_list, left_weight_list, left_info_list,
+                             right_point_pair_list, right_weight_list, right_info_list,
+                             top_point_pair_list, top_weight_list, top_info_list,
+                             bottom_point_pair_list, bottom_weight_list, bottom_info_list):
     # 对于那些validation数量过少的情况，需要限制supplement point pair的数量，保证其与raw point pair的比例，避免出现过分的失调。这里的限制我修改过，看一下如果效果不好就还原回去。
     supplement_point_pair_list, supplement_weight_list, supplement_info_list = random_select_for_supplement_point_pairs(point_pair_list, supplement_point_pair_list, supplement_weight_list,
                                                                                                                         supplement_info_list, configs.supplement_select_ratio)
@@ -359,9 +370,6 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
                                  iteration_index, distance_threshold):
     np.random.seed(configs.random_seed)
-
-    # TODO 这里2个小思路：1，第二步中，对于blank_supplement，应该把最终的weight和距离相关，距离越小weight绝对值越大。（因为目前不同方向的blank_supplement不会将gaze推向更远处）
-    #  2. 第一步中，似乎不应额外添加超过distance threshold随机选择所有点做点对的情况。匹配还是在行内进行。将blank_supplement都放到第二步去做。
 
     with multiprocessing.Pool(configs.number_of_process) as pool:
         # 1. 首先遍历所有的reading point，找到与其row label一致的、距离最近的text point，然后将这些匹配点加入到point_pair_list中。
@@ -422,7 +430,12 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
                                   reading_data,
                                   reading_nbrs_list, distance_threshold))
 
-        results_raw = pool.starmap(step_3_add_boundary_points, args_list)
+        # results_raw = pool.starmap(step_3_add_boundary_points, args_list)
+
+        results_raw = []
+        for arg_index in range(len(args_list)):
+            results_raw.append(step_3_add_boundary_points(*args_list[arg_index]))
+
         results_raw = [result_raw for result_raw in results_raw if len(result_raw[0]) > 0]
         results = []
         for result_index, result in enumerate(results_raw):
@@ -444,13 +457,13 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
 
 
         # 4. 限制添加点的数量。
-        point_pair_list, weight_list, info_list = step_4_supplement_num(iteration_index,
-                                                                        point_pair_list, weight_list, info_list,
-                                                                        supplement_point_pair_list, supplement_weight_list, supplement_info_list,
-                                                                        left_point_pair_list, left_weight_list, left_info_list,
-                                                                        right_point_pair_list, right_weight_list, right_info_list,
-                                                                        top_point_pair_list, top_weight_list, top_info_list,
-                                                                        bottom_point_pair_list, bottom_weight_list, bottom_info_list)
+        point_pair_list, weight_list, info_list = step_4_select_supplement(iteration_index,
+                                                                           point_pair_list, weight_list, info_list,
+                                                                           supplement_point_pair_list, supplement_weight_list, supplement_info_list,
+                                                                           left_point_pair_list, left_weight_list, left_info_list,
+                                                                           right_point_pair_list, right_weight_list, right_info_list,
+                                                                           top_point_pair_list, top_weight_list, top_info_list,
+                                                                           bottom_point_pair_list, bottom_weight_list, bottom_info_list)
 
         return point_pair_list, weight_list, info_list
 

@@ -299,7 +299,9 @@ def train_and_save_model_in_batch(model_type, model_prefix):
     bool_dict_list = model_config.to_dict(orient="records")
 
     for bool_dict_list_index in range(len(bool_dict_list)):
-        if bool_dict_list_index == 0:
+        # if bool_dict_list_index == 0:
+        if bool_dict_list[bool_dict_list_index]["model_index"] == 0:
+        # if bool_dict_list[bool_dict_list_index]["model_index"] != 8 and bool_dict_list[bool_dict_list_index]["model_index"] != 9: # 更新8和9两个模型时候用的。
             # index为0对应没有任何特征（即不需要linear model），所以跳过。
             continue
         bool_dict = bool_dict_list[bool_dict_list_index]
@@ -350,7 +352,10 @@ def compute_weight_and_save_to_text_in_batch(model_type, model_prefix):
     bool_dict_list = model_config.to_dict(orient="records")
 
     for bool_dict_list_index in range(len(bool_dict_list)):
-        if bool_dict_list_index == 0:
+        if bool_dict_list[bool_dict_list_index]["model_index"] != 7 and bool_dict_list[bool_dict_list_index]["model_index"] != 8 and bool_dict_list[bool_dict_list_index]["model_index"] != 9: # 更新8和9两个模型时候用的。
+            continue
+        if bool_dict_list[bool_dict_list_index]["model_index"] == 0:
+        # if bool_dict_list_index == 0:
             text_sorted_mapping = read_text_sorted_mapping()
             text_sorted_mapping["prediction"] = 0
             save_path = f"{os.getcwd()}/data/text/{configs.round_num}/text_sorted_mapping_with_prediction_0.csv"
