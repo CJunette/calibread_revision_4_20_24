@@ -60,6 +60,9 @@ def step_2_add_no_matching_text_point(gaze_point_list_1d, gaze_point_info_list_1
     # 生成每个文本每个reading data的nearest neighbor。
     reading_nbrs_list = []
     for text_index in range(len(reading_data)):
+        if text_index in configs.training_index_list:
+            reading_nbrs_list.append([])
+            continue
         reading_df = reading_data[text_index]
         reading_coordinates = reading_df[["gaze_x", "gaze_y"]].values.tolist()
         reading_nbrs = NearestNeighbors(n_neighbors=int(len(reading_coordinates) / 4), algorithm='kd_tree').fit(reading_coordinates)
@@ -109,6 +112,11 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
     info_list = []
     data_type_list = []
 
+    half_row_num = int((configs.row_num - 1) / 2)
+
+    if data_type_input == "right" and row_index > half_row_num:
+        distance_ratio += configs.right_boundary_distance_threshold_ratio_derivative * (row_index - half_row_num)
+
     distances, indices = reading_nbrs_list[text_index].kneighbors([[x, y]])
     for point_index in range(len(indices[0])):
         if distances[0][point_index] < distance_threshold * distance_ratio:
@@ -125,12 +133,19 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
                 continue
             elif data_type_input == "right" and gaze_point[0] >= x:
                 continue
+
             point_pair = [gaze_point, [x, y]]
             if data_type_input == "left":
                 if row_index <= 0:
-                    weight = row_df.iloc[col_index]["penalty"] # 为了让左上角的数据不出问题，我将左上角blank_supplement的penalty都设置为了1（而非负数）。
+                    weight = row_df.iloc[col_index]["penalty"]  # 为了让左上角的数据不出问题，我将左上角blank_supplement的penalty都设置为了1（而非负数）。
                 else:
                     weight = configs.empty_penalty * configs.left_boundary_ratio
+            elif data_type_input == "right":
+                # 对右下角的点，增加他们的权重。
+                if row_index > half_row_num:
+                    weight = configs.empty_penalty * (boundary_ratio + row_index - half_row_num * configs.right_boundary_ratio_derivative)
+                else:
+                    weight = configs.empty_penalty * boundary_ratio
             elif data_type_input == "top":
                 weight = row_df.iloc[col_index]["penalty"]
             else:
@@ -151,8 +166,7 @@ def _add_closest_reading_point_to_boundary(reading_nbrs_list, reading_data,
 
 
 def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
-                               reading_data,
-                               reading_nbrs_list, distance_threshold):
+                               reading_data, reading_nbrs_list, distance_threshold):
     data_type_list = []
     point_pair_list = []
     weight_list = []
@@ -193,11 +207,12 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
             info_list.extend(top_info_list)
             data_type_list.extend(top_data_type_list)
 
-    # 对于其它行，对左右两侧的blank_supplement添加匹配。
+    # 如果当前row并不包含任何文字（即完全是上下册的补充空白行），则直接跳过左右匹配。
     row_df = text_df[text_df["row"] == row_list[row_index]]
     if row_df[row_df["word"] != "blank_supplement"].shape[0] == 0:
-        return point_pair_list, weight_list, info_list, data_type_list
+        return data_type_list, point_pair_list, weight_list, info_list
 
+    # 对于其它行，对左右两侧的blank_supplement添加匹配。
     row_df = row_df.sort_values(by=["col"])
     for index in range(row_df.shape[0]):
         # if index < row_df.shape[0] - 1:
@@ -219,7 +234,7 @@ def step_3_add_boundary_points(text_df, text_index, row_list, row_index,
                 info_list.extend(left_info_list)
                 data_type_list.extend(left_data_type_list)
 
-    row_df = row_df.sort_values(by=["col"], ascending=False) # 注意，这里有一个ascending=False。
+    row_df = row_df.sort_values(by=["col"], ascending=False)  # 注意，这里有一个ascending=False。
     for index in range(row_df.shape[0]):
         # if index < row_df.shape[0]:
         if index < row_df.shape[0] - 1:
@@ -262,7 +277,7 @@ def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_
         return point_pair_list, weight_list, info_list
     elif ratio == 1:
         return point_pair_list, weight_list, info_list
-    elif len(point_pair_list) < 400: # 尽量保证有400个点可以用于训练。
+    elif len(point_pair_list) < 400:  # 尽量保证有400个点可以用于训练。
         return point_pair_list, weight_list, info_list
     elif len(point_pair_list) * ratio < 400:
         ratio = 400 / len(point_pair_list)
@@ -331,7 +346,7 @@ def step_4_select_supplement(iteration_index,
     right_point_pair_list, right_weight_list, right_info_list = random_select_for_supplement_point_pairs(point_pair_list, right_point_pair_list, right_weight_list, right_info_list,
                                                                                                          configs.boundary_select_ratio)
     top_point_pair_list, top_weight_list, top_info_list = random_select_for_supplement_point_pairs(point_pair_list, top_point_pair_list, top_weight_list, top_info_list,
-                                                                                                        configs.boundary_select_ratio)
+                                                                                                   configs.boundary_select_ratio)
     bottom_point_pair_list, bottom_weight_list, bottom_info_list = random_select_for_supplement_point_pairs(point_pair_list, bottom_point_pair_list, bottom_weight_list, bottom_info_list,
                                                                                                             configs.boundary_select_ratio)
 
@@ -364,7 +379,7 @@ def step_4_select_supplement(iteration_index,
     return point_pair_list, weight_list, row_label_list
 
 
-def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze_point_info_list_1d,
+def point_matching_multi_process(reading_data, gaze_point_list_1d, gaze_point_info_list_1d,
                                  text_data, filtered_text_data_list,
                                  total_nbrs_list, row_nbrs_list,
                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
@@ -416,25 +431,26 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
         # 2. 接下来做的是确认有文字，但没有reading data的text_unit，并根据其最近的reading data，添加额外的点对。该添加点对不受文章序号限制。
         # 生成一个所有reading point的nearest neighbor。
         total_reading_nbrs, reading_nbrs_list, supplement_point_pair_list, supplement_weight_list, supplement_info_list = \
-            step_2_add_no_matching_text_point(gaze_point_list_1d, selected_gaze_point_info_list_1d, reading_data, effective_text_point_dict, actual_text_point_dict, point_pair_list)
+            step_2_add_no_matching_text_point(gaze_point_list_1d, gaze_point_info_list_1d, reading_data, effective_text_point_dict, actual_text_point_dict, point_pair_list)
 
         # 3. 对于横向最外侧的补充点或空格点（即左右侧紧贴近正文的点），都可以考虑额外添加一些匹配点对，添加的weight是负数。
         # 这里单独为要添加boundary的point pair生成list，方便后续筛选。
         args_list = []
         for text_index in range(len(text_data)):
+            if text_index in configs.training_index_list:
+                continue
             text_df = text_data[text_index]
             row_list = text_df["row"].unique().tolist()
 
             for row_index in range(len(row_list)):
                 args_list.append((text_df, text_index, row_list, row_index,
-                                  reading_data,
-                                  reading_nbrs_list, distance_threshold))
+                                  reading_data, reading_nbrs_list, distance_threshold))
 
-        # results_raw = pool.starmap(step_3_add_boundary_points, args_list)
+        results_raw = pool.starmap(step_3_add_boundary_points, args_list)
 
-        results_raw = []
-        for arg_index in range(len(args_list)):
-            results_raw.append(step_3_add_boundary_points(*args_list[arg_index]))
+        # results_raw = []
+        # for arg_index in range(len(args_list)):
+        #     results_raw.append(step_3_add_boundary_points(*args_list[arg_index]))
 
         results_raw = [result_raw for result_raw in results_raw if len(result_raw[0]) > 0]
         results = []
@@ -455,7 +471,6 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
         bottom_weight_list = [results[i][2] for i in range(len(results)) if results[i][0] == "bottom"]
         bottom_info_list = [results[i][3] for i in range(len(results)) if results[i][0] == "bottom"]
 
-
         # 4. 限制添加点的数量。
         point_pair_list, weight_list, info_list = step_4_select_supplement(iteration_index,
                                                                            point_pair_list, weight_list, info_list,
@@ -466,28 +481,3 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, selected_gaze
                                                                            bottom_point_pair_list, bottom_weight_list, bottom_info_list)
 
         return point_pair_list, weight_list, info_list
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

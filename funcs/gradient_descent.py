@@ -145,6 +145,7 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
     grad_norm_derivative_list = [0]
 
     final_transform_matrix_raw = None
+    final_transform_parameter = None
     least_error = 1000000
     least_grad_norm = 0
     least_index = 0 # 用least index来标记最终是否是主动收敛退出。
@@ -199,6 +200,8 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
                 or (abs(error_value) < 1000 and error_value < least_error)):
             least_error = error_value
             final_transform_matrix_raw = transform_matrix.clone()
+            final_transform_parameter = [theta.cpu().detach().item(), tx.cpu().detach().item(), ty.cpu().detach().item(),
+                                         sx.cpu().detach().item(), sy.cpu().detach().item(), shx.cpu().detach().item(), shy.cpu().detach().item()]
             least_grad_norm = grad_norm
             least_index = iteration_index
 
@@ -226,13 +229,17 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
 
     if least_index == max_iterations:
         transform_matrix = transform_matrix.cpu().detach().numpy()
+        parameters = [theta.cpu().detach().item(), tx.cpu().detach().item(), ty.cpu().detach().item(),
+                      sx.cpu().detach().item(), sy.cpu().detach().item(), shx.cpu().detach().item(), shy.cpu().detach().item()]
     elif least_index == 0:
         # 如果没有做任何迭代，那么返回一个单位矩阵。
         transform_matrix = np.eye(3)
         grad_norm = 0
         last_iteration_num = least_index
+        parameters = [0, 0, 0, 1, 1, 0, 0]
     else:
         transform_matrix = final_transform_matrix_raw.cpu().detach().numpy()
         grad_norm = least_grad_norm
         last_iteration_num = least_index
-    return transform_matrix, last_error, last_iteration_num, grad_norm
+        parameters = final_transform_parameter
+    return transform_matrix, parameters, last_error, last_iteration_num, grad_norm

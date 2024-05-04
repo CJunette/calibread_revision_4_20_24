@@ -3,11 +3,11 @@ import numpy as np
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 148
+file_index = 204
 
 random_seed = 0
 number_of_process = 8
-gpu_device_id = "cuda:0"
+gpu_device_id = "cuda:1"
 
 screen_width = 1920
 screen_height = 1200
@@ -36,24 +36,28 @@ empty_penalty = -0.001
 bool_weight = True
 bool_text_weight = True
 weight_divisor = 5
-weight_intercept = 0.2
+weight_intercept = 0.5
 completion_weight = 5
 right_down_corner_unmatched_ratio = 1
-left_boundary_ratio = 1200
-right_boundary_ratio = 800
+left_boundary_ratio = 1600
+right_boundary_ratio = 1500
 top_boundary_ratio = 800
-bottom_boundary_ratio = 500
+bottom_boundary_ratio = 100
 left_boundary_distance_threshold_ratio = 1.25
-right_boundary_distance_threshold_ratio = 1
+right_boundary_distance_threshold_ratio = 1.25
 top_boundary_distance_threshold_ratio = 0.75
 bottom_boundary_distance_threshold_ratio = 0.75
-text_distance_threshold_ratio = 1
+right_boundary_distance_threshold_ratio_derivative = 0.5
+right_boundary_ratio_derivative = 400
 random_select_ratio_for_point_pair = 0.1
 last_iteration_ratio = 0.25
 punctuation_ratio = 0.1
 boundary_select_ratio = 0.4
 supplement_select_ratio = 0.1
+max_iteration = 100
 gradient_descent_iteration_threshold = 500
+text_distance_threshold_ratio = 1
+learning_rate_in_gradient_descent = 0.01
 
 theta_error_threshold = np.pi / 72
 scale_error_threshold = 0.15

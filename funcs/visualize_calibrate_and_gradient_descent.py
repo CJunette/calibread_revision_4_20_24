@@ -59,8 +59,8 @@ def _visualize_reading_points(ax, reading_data, transform_matrix, point_color):
     #     ax.scatter(gaze_point_after_transform[0], gaze_point_after_transform[1], c=point_color, s=1)
 
 
-def _visualize_point_pair(ax, different_point_pair, different_weight):
-    if len(different_point_pair) == 0:
+def _visualize_point_pair(ax, point_pair, weight):
+    if len(point_pair) == 0:
         return
     gaze_x_list = []
     gaze_y_list = []
@@ -69,16 +69,16 @@ def _visualize_point_pair(ax, different_point_pair, different_weight):
     line_segment_list = []
     line_color_list = []
     line_alpha_list = []
-    max_weight = max(different_weight)
-    min_weight = min(different_weight)
+    max_weight = max(weight)
+    min_weight = min(weight)
 
-    for point_pair_index in range(len(different_point_pair)):
-        gaze_x_list.append(different_point_pair[point_pair_index][0][0])
-        gaze_y_list.append(different_point_pair[point_pair_index][0][1])
-        cali_x_list.append(different_point_pair[point_pair_index][1][0])
-        cali_y_list.append(different_point_pair[point_pair_index][1][1])
-        line_segment_list.append([different_point_pair[point_pair_index][0], different_point_pair[point_pair_index][1]])
-        current_weight = different_weight[point_pair_index]
+    for point_pair_index in range(len(point_pair)):
+        gaze_x_list.append(point_pair[point_pair_index][0][0])
+        gaze_y_list.append(point_pair[point_pair_index][0][1])
+        cali_x_list.append(point_pair[point_pair_index][1][0])
+        cali_y_list.append(point_pair[point_pair_index][1][1])
+        line_segment_list.append([point_pair[point_pair_index][0], point_pair[point_pair_index][1]])
+        current_weight = weight[point_pair_index]
         if current_weight > 0:
             # red_ratio = current_weight / max_weight * 0.7 + 0.3
             # color = (red_ratio, 0.2, 0.2)

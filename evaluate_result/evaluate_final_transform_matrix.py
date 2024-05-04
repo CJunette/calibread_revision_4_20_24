@@ -142,13 +142,38 @@ def compute_accuracy_error_for_all_subjects(file_index, model_index):
 
     error_list = []
     print(f"processing calibration data")
-    for subject_index in range(len(calibration_data)):
+    for subject_index in range(len(accumulated_transform_matrix_avg_list)):
         gaze_coordinates_before_translation_list, gaze_coordinates_after_translation_list, \
             avg_gaze_coordinate_before_translation_list, avg_gaze_coordinate_after_translation_list, \
             calibration_point_list_modified = apply_transform_to_calibration(calibration_data[subject_index], accumulated_transform_matrix_avg_list[subject_index])
         distance_list, avg_distance = compute_distance_between_std_and_correction(avg_gaze_coordinate_after_translation_list, calibration_point_list_modified)
         error_list.append(avg_distance)
         print(avg_distance)
+    return error_list
+
+
+def compute_accuracy_error_for_all_subjects_given_range(start_index, end_index, model_indices):
+    if len(model_indices) != end_index - start_index + 1:
+        raise ValueError("length of model indices should equal to end_index - start_index + 1!")
+
+    # args_list = []
+    # for file_index in range(start_index, end_index + 1):
+    #     args_list.append((file_index, model_indices[file_index - start_index]))
+
+    error_list = []
+    for file_index in range(start_index, end_index + 1):
+        print(f"processing file: {file_index}")
+        error_list_1 = compute_accuracy_error_for_all_subjects(file_index, model_indices[file_index - start_index])
+        error_list.append(error_list_1)
+
+    for file_index in range(len(error_list)):
+        print(file_index + start_index, end="\t")
+    print()
+
+    for subject_index in range(len(error_list[0])):
+        for file_index in range(len(error_list)):
+            print(error_list[file_index][subject_index], end="\t")
+        print()
     return error_list
 
 

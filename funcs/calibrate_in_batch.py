@@ -10,7 +10,13 @@ from read.read_reading import read_raw_reading
 def calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, max_iteration=100, distance_threshold=64):
     text_data = text_data_list[model_index]
     for subject_index in range(len(reading_data_list)):
-    # for subject_index in range(2, len(reading_data_list)):
+    # for subject_index in range(0, 3):
+    # for subject_index in range(3, 6):
+    # for subject_index in range(6, 9):
+    # for subject_index in range(9, 12):
+    # for subject_index in range(12, 15):
+    # for subject_index in range(15, 18):
+    # for subject_index in range(18, 19):
         if calibrate_mode == "simple_linear_weight":
             calibrate_with_simple_linear_and_weight(model_index, subject_index, text_data, reading_data_list[subject_index], calibration_data_list[subject_index], max_iteration, distance_threshold)
 
@@ -34,7 +40,7 @@ def calibrate_in_batch(calibrate_mode, model_indices, validation_num=25, random_
 
     # for model_index in range(len(text_data_list)):
     for model_index in model_indices:
-        calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode)
+        calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, configs.max_iteration)
 
 
 def calibrate_in_batch_for_different_training_num(calibrate_mode, start_file_index, start_num, end_num, random_seed=0, model_index=1):
