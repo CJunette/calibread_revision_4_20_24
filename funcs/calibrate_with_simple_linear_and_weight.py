@@ -3,6 +3,8 @@ import math
 import os
 
 import numpy as np
+import pandas as pd
+
 import configs
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
@@ -421,6 +423,106 @@ def _get_int_point_pairs(point_pair):
     return int_point_pair
 
 
+def _prepare_boundary_points(text_data, distance_threshold):
+    def _add_data_to_list(x, y, weight, boundary_type, text_index, row_index, col_index, distance_threshold):
+        coordinate_list.append([x, y])
+        weight_list.append(weight)
+        type_list.append(string_to_text[boundary_type])
+        text_index_list.append(text_index)
+        row_index_list.append(row_index)
+        col_index_list.append(col_index)
+        distance_threshold_list.append(distance_threshold)
+
+    string_to_text = {"left": 0, "right": 1, "top": 2, "bottom": 3}
+    coordinate_list = []
+    type_list = []
+    weight_list = []
+    text_index_list = []
+    row_index_list = []
+    col_index_list = []
+    distance_threshold_list = []
+    total_point_num_list = []
+
+    for text_index in range(len(text_data)):
+        if text_index in configs.training_index_list:
+            continue
+        text_df = text_data[text_index]
+        row_list = text_df["row"].unique().tolist()
+
+        for row_index in range(len(row_list)):
+            total_point_num = 0
+            row = row_list[row_index]
+            row_df = text_df[text_df["row"] == row]
+            if row_df[row_df["word"] != "blank_supplement"].shape[0] == 0:
+                # 只有top和bottom的情况。
+                if int(row) != row and row > 0:
+                    # bottom
+                    for index in range(row_df.shape[0]):
+                        col = row_df.iloc[index]["col"]
+                        x = row_df.iloc[index]["x"]
+                        y = row_df.iloc[index]["y"]
+                        boundary_type = "bottom"
+                        weight = configs.empty_penalty * configs.bottom_boundary_ratio
+                        distance_threshold_bottom = distance_threshold * configs.bottom_boundary_distance_threshold_ratio
+                        _add_data_to_list(x, y, weight, boundary_type, text_index, row, col, distance_threshold_bottom)
+                        total_point_num += 1
+                elif int(row) != row and row < 0:
+                    # top
+                    for index in range(row_df.shape[0]):
+                        col = row_df.iloc[index]["col"]
+                        x = row_df.iloc[index]["x"]
+                        y = row_df.iloc[index]["y"]
+                        boundary_type = "top"
+                        weight = row_df.iloc[index]["penalty"]
+                        distance_threshold_top = distance_threshold * configs.top_boundary_distance_threshold_ratio
+                        _add_data_to_list(x, y, weight, boundary_type, text_index, row, col, distance_threshold_top)
+                        total_point_num += 1
+                total_point_num_list.append(total_point_num)
+            else:
+                # 只有left和right的情况。
+                half_row_num = int((configs.row_num - 1) / 2)
+                total_point_num = 0
+                # left的情况。
+                row_df = row_df.sort_values(by=["col"])
+                for index in range(row_df.shape[0]):
+                    if index < row_df.shape[0]:
+                        word = row_df.iloc[index]["word"]
+                        if (word == "blank_supplement" or word.strip() == "") and row_df.iloc[index]["col"] < configs.col_num / 2:
+                            col = row_df.iloc[index]["col"]
+                            x = row_df.iloc[index]["x"]
+                            y = row_df.iloc[index]["y"]
+                            boundary_type = "left"
+                            if row_index <= 0:
+                                weight = row_df.iloc[index]["penalty"]  # 为了让左上角的数据不出问题，我将左上角blank_supplement的penalty都设置为了1（而非负数）。
+                            else:
+                                weight = configs.empty_penalty * configs.left_boundary_ratio
+                            distance_threshold_left = distance_threshold * configs.left_boundary_distance_threshold_ratio
+                            _add_data_to_list(x, y, weight, boundary_type, text_index, row, col, distance_threshold_left)
+                            total_point_num += 1
+                # right的情况。
+                row_df = row_df.sort_values(by=["col"], ascending=False)  # 注意，这里有一个ascending=False。
+                for index in range(row_df.shape[0]):
+                    if index < row_df.shape[0] - 1:
+                        word = row_df.iloc[index]["word"]
+                        if (word == "blank_supplement" or word.strip() == "") and row_df.iloc[index]["col"] >= configs.col_num / 2:
+                            col = row_df.iloc[index]["col"]
+                            x = row_df.iloc[index]["x"]
+                            y = row_df.iloc[index]["y"]
+                            boundary_type = "right"
+                            if row_index > half_row_num:
+                                weight = configs.empty_penalty * (configs.right_boundary_ratio + row_index - half_row_num * configs.right_boundary_ratio_derivative)
+                            else:
+                                weight = configs.empty_penalty * configs.right_boundary_ratio
+                            if row_index > half_row_num:
+                                distance_threshold_right = distance_threshold * (configs.right_boundary_distance_threshold_ratio + configs.right_boundary_distance_threshold_ratio_derivative * (row_index - half_row_num))
+                            else:
+                                distance_threshold_right = distance_threshold * configs.right_boundary_distance_threshold_ratio
+                            _add_data_to_list(x, y, weight, boundary_type, text_index, row, col, distance_threshold_right)
+                            total_point_num += 1
+                total_point_num_list.append(total_point_num)
+    return coordinate_list, weight_list, type_list, text_index_list, row_index_list, col_index_list, distance_threshold_list, total_point_num_list
+
+
 def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_data, reading_data, calibration_data, max_iteration=100, distance_threshold=64):
     np.random.seed(configs.random_seed)
     # reading_data = reading_data.copy()
@@ -511,6 +613,11 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     selected_gaze_point_list_1d, effective_text_point_dict, selected_reading_data, calibration_data, scale_matrix, translate_matrix = (
         _transform_using_centroid_and_outbound(gaze_point_list_1d, selected_gaze_point_list_1d, effective_text_point_dict, reading_data, selected_reading_data, subject_index, calibration_data))
 
+    (boundary_coordinate_list, boundary_weight_list,
+     boundary_type_list, boundary_text_index_list,
+     boundary_row_index_list, boundary_col_index_list,
+     boundary_distance_threshold_list, total_boundary_point_num_list) = _prepare_boundary_points(text_data, distance_threshold)
+
     with open(log_file_path, "a") as log_file:
         json.dump({"scale_matrix": scale_matrix.tolist(), "translate_matrix": translate_matrix.tolist()}, log_file, indent=4)
         log_file.write(",\n")
@@ -537,6 +644,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
                                                                                text_data, filtered_text_data_list,
                                                                                total_nbrs_list, row_nbrs_list,
                                                                                effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
+                                                                               boundary_coordinate_list, boundary_weight_list, boundary_type_list, boundary_text_index_list, boundary_row_index_list, boundary_distance_threshold_list,
                                                                                iteration_index, distance_threshold)
 
         random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list = random_select_for_gradient_descent(iteration_index, point_pair_list, weight_list, info_list, configs.random_select_ratio_for_point_pair)
@@ -582,8 +690,8 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         #                                                                                          max_iterations=2000, stop_grad_norm=1, grad_clip_value=1e8)
 
         transform_matrix, parameters, gd_error, last_iteration_num, last_grad_norm = gradient_descent_translate_rotate_shear_scale(random_selected_point_pair_list, random_selected_weight_list,
-                                                                                                                       learning_rate=learning_rate, last_iteration_num=last_iteration_num,
-                                                                                                                       max_iterations=1000, stop_grad_norm=1, grad_clip_value=1e8)
+                                                                                                                                   learning_rate=learning_rate, last_iteration_num=last_iteration_num,
+                                                                                                                                   max_iterations=1000, stop_grad_norm=1, grad_clip_value=1e8)
 
         gd_error_list.append(gd_error)
         # update total_transform_matrix

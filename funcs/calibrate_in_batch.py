@@ -9,7 +9,17 @@ from read.read_reading import read_raw_reading
 
 def calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, max_iteration=100, distance_threshold=64):
     text_data = text_data_list[model_index]
-    for subject_index in range(len(reading_data_list)):
+
+    if configs.subject_start and configs.subject_end:
+        start = int(configs.subject_start)
+        end = int(configs.subject_end)
+        print(f"start subject {start}, end subject {end}")
+    else:
+        start = 0
+        end = len(reading_data_list)
+
+    for subject_index in range(start, end):
+    # for subject_index in range(len(reading_data_list)):
     # for subject_index in range(0, 3):
     # for subject_index in range(3, 6):
     # for subject_index in range(6, 9):
