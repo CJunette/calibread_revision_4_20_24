@@ -4,6 +4,8 @@ import os
 
 import numpy as np
 import pandas as pd
+import torch
+from torch.nn.utils.rnn import pad_sequence
 
 import configs
 from sklearn.cluster import DBSCAN
@@ -424,6 +426,9 @@ def _get_int_point_pairs(point_pair):
 
 
 def _prepare_boundary_points(text_data, distance_threshold):
+    """
+    这一函数用于准备point matching中step_3所需的边缘点数据。
+    """
     def _add_data_to_list(x, y, weight, boundary_type, text_index, row_index, col_index, distance_threshold):
         coordinate_list.append([x, y])
         weight_list.append(weight)
@@ -523,6 +528,64 @@ def _prepare_boundary_points(text_data, distance_threshold):
     return coordinate_list, weight_list, type_list, text_index_list, row_index_list, col_index_list, distance_threshold_list, total_point_num_list
 
 
+def _prepare_static_text_and_reading(reading_data, filtered_text_data_list, text_data):
+    """
+    这一函数用于准备后续point matching的step_1中需要的数据。
+    """
+    filtered_reading_density_list = []
+    filtered_text_coordinate_list = []
+    filtered_text_penalty_list = []
+    filtered_text_prediction_list = []
+
+    full_text_coordinate_list = []
+    full_text_penalty_list = []
+    full_text_prediction_list = []
+
+    text_index_list = []
+    row_index_list = []
+    gaze_index_list = []
+
+    for text_index in range(len(reading_data)):
+        if text_index in configs.training_index_list:
+            continue
+        reading_df = reading_data[text_index]
+        text_df = text_data[text_index]
+        text_df = text_df[text_df["word"] != "blank_supplement"]
+
+        full_text_coordinates = text_df[["x", "y"]].values.tolist() # 保证这里只有文字，没有blank_supplement。
+        full_text_prediction = text_df["prediction"].values.tolist()
+        full_text_penalty = text_df["penalty"].values.tolist()
+        for row_index in range(configs.row_num):
+            filtered_reading_df = reading_df[reading_df["row_label"] == row_index]
+            filtered_reading_density = filtered_reading_df["density"].values.tolist()
+            filtered_text_data = filtered_text_data_list[text_index][row_index]
+            filtered_text_coordinate = filtered_text_data[["x", "y"]].values.tolist()
+            filtered_text_prediction = filtered_text_data["prediction"].values.tolist()
+            filtered_text_penalty = filtered_text_data["penalty"].values.tolist()
+
+            filtered_reading_length = len(filtered_reading_density)
+            if len(filtered_reading_density) == 0:
+                continue
+            else:
+                if len(filtered_text_coordinate) == 0:
+                    continue
+                filtered_reading_density_list.extend(filtered_reading_density)
+
+                filtered_text_coordinate_list.extend([torch.tensor(filtered_text_coordinate)] * filtered_reading_length)
+                filtered_text_prediction_list.extend([torch.tensor(filtered_text_prediction)] * filtered_reading_length)
+                filtered_text_penalty_list.extend([torch.tensor(filtered_text_penalty)] * filtered_reading_length)
+
+                full_text_coordinate_list.extend([torch.tensor(full_text_coordinates)] * filtered_reading_length)
+                full_text_prediction_list.extend([torch.tensor(full_text_prediction)] * filtered_reading_length)
+                full_text_penalty_list.extend([torch.tensor(full_text_penalty)] * filtered_reading_length)
+                text_index_list.extend([text_index] * filtered_reading_length)
+                row_index_list.extend([row_index] * filtered_reading_length)
+                gaze_index_list.extend([i for i in range(filtered_reading_length)])
+
+    return (filtered_reading_density_list, filtered_text_coordinate_list, filtered_text_prediction_list, filtered_text_penalty_list,
+            full_text_coordinate_list, full_text_prediction_list, full_text_penalty_list, text_index_list, row_index_list, gaze_index_list)
+
+
 def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_data, reading_data, calibration_data, max_iteration=100, distance_threshold=64):
     np.random.seed(configs.random_seed)
     # reading_data = reading_data.copy()
@@ -613,10 +676,8 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
     selected_gaze_point_list_1d, effective_text_point_dict, selected_reading_data, calibration_data, scale_matrix, translate_matrix = (
         _transform_using_centroid_and_outbound(gaze_point_list_1d, selected_gaze_point_list_1d, effective_text_point_dict, reading_data, selected_reading_data, subject_index, calibration_data))
 
-    (boundary_coordinate_list, boundary_weight_list,
-     boundary_type_list, boundary_text_index_list,
-     boundary_row_index_list, boundary_col_index_list,
-     boundary_distance_threshold_list, total_boundary_point_num_list) = _prepare_boundary_points(text_data, distance_threshold)
+    static_text_and_reading = _prepare_static_text_and_reading(selected_reading_data, filtered_text_data_list, text_data)
+    static_boundary = _prepare_boundary_points(text_data, distance_threshold)
 
     with open(log_file_path, "a") as log_file:
         json.dump({"scale_matrix": scale_matrix.tolist(), "translate_matrix": translate_matrix.tolist()}, log_file, indent=4)
@@ -644,7 +705,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
                                                                                text_data, filtered_text_data_list,
                                                                                total_nbrs_list, row_nbrs_list,
                                                                                effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
-                                                                               boundary_coordinate_list, boundary_weight_list, boundary_type_list, boundary_text_index_list, boundary_row_index_list, boundary_distance_threshold_list,
+                                                                               static_text_and_reading, static_boundary,
                                                                                iteration_index, distance_threshold)
 
         random_selected_point_pair_list, random_selected_weight_list, random_selected_info_list = random_select_for_gradient_descent(iteration_index, point_pair_list, weight_list, info_list, configs.random_select_ratio_for_point_pair)

@@ -181,14 +181,14 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
         # error = error_distance + error_rotate + error_scale + error_shear
         error = error_distance
 
-        error_value = error.cpu().detach().numpy().item()
+        error_value = error.cpu().detach().numpy().item() # 这里导出并记录的都是weighted_distance，并不能作为最后的Accuracy Error。
         error.backward()
         optimizer.step()
         if grad_clip_value > 0:
             torch.nn.utils.clip_grad_norm_([theta, tx, ty, sx, sy, shx, shy], grad_clip_value)
 
         grad_norm = torch.abs(theta.grad) + torch.abs(tx.grad) + torch.abs(ty.grad) + torch.abs(sx.grad) + torch.abs(sy.grad) + torch.abs(shx.grad) + torch.abs(shy.grad)
-
+        max_distance = max(distance.cpu().detach().numpy().reshape(-1, 1))
         # print(f"iteration: {iteration_index}, error: {error}, grad_norm: {torch.norm(transform_matrix_raw.grad)}")
         last_iteration_num = iteration_index
         # last_error = error_value
@@ -196,8 +196,7 @@ def gradient_descent_translate_rotate_shear_scale(point_pairs, weight, last_iter
             grad_norm_derivative_list.append(grad_norm.cpu().detach() - grad_norm_list[-1])
         grad_norm_list.append(grad_norm.cpu().detach())
 
-        if (final_transform_matrix_raw is None
-                or (abs(error_value) < 1000 and error_value < least_error)):
+        if (final_transform_matrix_raw is None or (abs(error_value) < 1000 and error_value < least_error)):
             least_error = error_value
             final_transform_matrix_raw = transform_matrix.clone()
             final_transform_parameter = [theta.cpu().detach().item(), tx.cpu().detach().item(), ty.cpu().detach().item(),

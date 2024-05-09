@@ -37,6 +37,7 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
                 # weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept)
         else:
             weight = 1
+        data_type = "filtered"
     else:
         # 在point_matching过程中，因为一定要给reading point添加一个匹配的text point，所以可能会出现距离极长的匹配。
         # 这种匹配应该在weight进行额外的处理，下面用distance和distance_threshold的比值作为ratio，去修改weight。
@@ -46,15 +47,137 @@ def step_1_matching_among_all(text_index, row_index, gaze_index,
         ratio = min(1, np.float_power(distance_threshold / 2 / distance, 2))
         point_pair = [filtered_reading_coordinates[gaze_index], text_coordinate[filtered_indices_of_all_text[gaze_index][0]]]
         if text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["word"] == "blank_supplement":
+            # 修改后的代码中，这里应该不存在blank_supplement。
             weight = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["penalty"] * ratio
         else:
             prediction = text_data[text_index].iloc[filtered_indices_of_all_text[gaze_index][0]]["prediction"]
             density = filtered_reading_density[gaze_index]
             weight = configs.weight_divisor / (abs(density - prediction) + configs.weight_intercept) * ratio
         if not bool_weight:
-            weight = 1
+            weight = 1 * ratio # 这里我加了个ratio，避免没有bool_weight的时候，远距离的点对出问题。
+        data_type = "full"
 
-    return text_index, row_index, gaze_index, point_pair, weight
+    return text_index, row_index, gaze_index, point_pair, weight, data_type
+
+
+def step_1_matching_among_all_gpu(reading_data, filtered_text_data_list, text_data, static_text_and_reading, distance_threshold):
+    (reading_density_list, filtered_text_coordinate_list, filtered_text_prediction_list, filtered_text_penalty_list,
+     full_text_coordinate_list, full_text_prediction_list, full_text_penalty_list, text_index_list, row_index_list, gaze_index_list) = static_text_and_reading
+
+    reading_density_tensor = torch.tensor(reading_density_list, dtype=torch.float32, device=configs.gpu_device_id)
+    filtered_text_coordinate_tensor = pad_sequence(filtered_text_coordinate_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    filtered_text_prediction_tensor = pad_sequence(filtered_text_prediction_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    filtered_text_penalty_tensor = pad_sequence(filtered_text_penalty_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    filtered_text_index_tensor = torch.tensor(text_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+    filtered_row_index_tensor = torch.tensor(row_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+    filtered_gaze_index_tensor = torch.tensor(gaze_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+
+    full_text_coordinate_tensor = pad_sequence(full_text_coordinate_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    full_text_prediction_tensor = pad_sequence(full_text_prediction_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    full_text_penalty_tensor = pad_sequence(full_text_penalty_list, batch_first=True, padding_value=configs.padding_value).to(dtype=torch.float32, device=configs.gpu_device_id)
+    full_text_index_tensor = torch.tensor(text_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+    full_row_index_tensor = torch.tensor(row_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+    full_gaze_index_tensor = torch.tensor(gaze_index_list, dtype=torch.int64, device=configs.gpu_device_id)
+
+    filtered_distance_threshold_tensor = torch.full((filtered_text_coordinate_tensor.size(0), filtered_text_coordinate_tensor.size(1)), distance_threshold, dtype=torch.float32, device=configs.gpu_device_id)
+    full_distance_threshold_tensor = torch.full((full_text_coordinate_tensor.size(0), full_text_coordinate_tensor.size(1)), distance_threshold, dtype=torch.float32, device=configs.gpu_device_id)
+
+    filtered_padding_mask = filtered_text_coordinate_tensor[:, :, 0] != configs.padding_value
+    full_padding_mask = full_text_coordinate_tensor[:, :, 0] != configs.padding_value
+
+    filtered_dim_1_length = filtered_text_coordinate_tensor.size(1)
+    full_dim_1_length = full_text_coordinate_tensor.size(1)
+
+    # 这里的大部分内容都可以通过外面的_prepare_static_text_and_reading计算，但要注意，这里每次还需要重新计算一次filtered_reading_coordinates。
+    reading_coordinate_list = []
+    for text_index in range(len(reading_data)):
+        if text_index in configs.training_index_list:
+            continue
+        reading_df = reading_data[text_index]
+        for row_index in range(configs.row_num):
+            filtered_reading_df = reading_df[reading_df["row_label"] == row_index]
+            filtered_reading_coordinates = filtered_reading_df[["gaze_x", "gaze_y"]].values.tolist()
+            filtered_text_data = filtered_text_data_list[text_index][row_index]
+
+            if len(filtered_reading_coordinates) == 0 or len(filtered_text_data) == 0:
+                continue
+            else:
+                reading_coordinate_list.extend(filtered_reading_coordinates)
+
+    reading_coordinates_tensor = torch.tensor(reading_coordinate_list, dtype=torch.float32, device=configs.gpu_device_id)
+    reading_coordinates_tensor_filtered = reading_coordinates_tensor.unsqueeze(1).expand(-1, filtered_dim_1_length, -1)
+    reading_coordinates_tensor_full = reading_coordinates_tensor.unsqueeze(1).expand(-1, full_dim_1_length, -1)
+
+    filtered_distance_tensor = torch.norm(reading_coordinates_tensor_filtered - filtered_text_coordinate_tensor, dim=2)
+    filtered_distance_mask = filtered_distance_tensor < filtered_distance_threshold_tensor
+    filtered_minimal_distance_mask = filtered_distance_tensor == filtered_distance_tensor.min(dim=1)[0].unsqueeze(1)
+
+    if configs.bool_weight:
+        filtered_weight_from_formula = configs.weight_divisor / (torch.abs(reading_density_tensor.unsqueeze(1) - filtered_text_prediction_tensor) + configs.weight_intercept)
+        # 创建一个tensor，只有filtered_text_penalty_tensor的值大于0时，对应位置的值为1，否则为0。
+        if configs.bool_text_weight:
+            filtered_weight = filtered_weight_from_formula * (filtered_text_penalty_tensor > 0) + filtered_text_penalty_tensor * (filtered_text_penalty_tensor <= 0)
+        else:
+            filtered_weight = filtered_text_penalty_tensor.clone()
+    else:
+        filtered_weight = torch.ones_like(filtered_distance_tensor)
+
+    filtered_mask = filtered_padding_mask & filtered_distance_mask & filtered_minimal_distance_mask
+    masked_filtered_text_coordinate_tensor = filtered_text_coordinate_tensor[filtered_mask]
+    masked_text_index_tensor = filtered_text_index_tensor.unsqueeze(1).expand(-1, filtered_dim_1_length)[filtered_mask]
+    masked_row_index_tensor = filtered_row_index_tensor.unsqueeze(1).expand(-1, filtered_dim_1_length)[filtered_mask]
+    masked_gaze_index_tensor = filtered_gaze_index_tensor.unsqueeze(1).expand(-1, filtered_dim_1_length)[filtered_mask]
+    masked_filtered_weight_tensor = filtered_weight[filtered_mask]
+    masked_filtered_reading_coordinate_tensor = reading_coordinates_tensor.unsqueeze(1).expand(-1, filtered_dim_1_length, -1)[filtered_mask]
+
+    # 找出那些filter_distance_mask中，整行都为False的行，作为一个新的mask。
+    filtered_distance_all_false_mask = torch.all(~filtered_distance_mask, dim=1).unsqueeze(1).expand(-1, full_dim_1_length)
+    full_distance_tensor = torch.norm(reading_coordinates_tensor_full - full_text_coordinate_tensor, dim=2)
+    full_distance_ratio_tensor = distance_threshold / 2 / full_distance_tensor
+    full_distance_ratio_tensor = torch.pow(full_distance_ratio_tensor, 2)
+    full_distance_ratio_tensor = torch.min(full_distance_ratio_tensor, torch.ones_like(full_distance_ratio_tensor))
+
+    if configs.bool_weight:
+        full_weight_from_formula = configs.weight_divisor / (torch.abs(reading_density_tensor.unsqueeze(1) - full_text_prediction_tensor) + configs.weight_intercept)
+        full_weight = full_weight_from_formula * full_distance_ratio_tensor
+    else:
+        # 这里我稍微做了一点修改，之前如果是没有bool_weight的情况下，结果都是1。这里我改成了1乘以距离构成的full_distance_ratio_tensor。
+        full_weight = full_text_penalty_tensor * full_distance_ratio_tensor
+
+    # 以full_distance_tensor中每行的最小值为mask。
+    full_minimal_distance_mask = full_distance_tensor == full_distance_tensor.min(dim=1)[0].unsqueeze(1)
+    full_mask = full_padding_mask & filtered_distance_all_false_mask & full_minimal_distance_mask
+
+    masked_full_text_coordinate_tensor = full_text_coordinate_tensor[full_mask]
+    masked_full_text_index_tensor = full_text_index_tensor.unsqueeze(1).expand(-1, full_dim_1_length)[full_mask]
+    masked_full_row_index_tensor = full_row_index_tensor.unsqueeze(1).expand(-1, full_dim_1_length)[full_mask]
+    masked_full_gaze_index_tensor = full_gaze_index_tensor.unsqueeze(1).expand(-1, full_dim_1_length)[full_mask]
+    masked_full_weight_tensor = full_weight[full_mask]
+    masked_full_reading_coordinate_tensor = reading_coordinates_tensor.unsqueeze(1).expand(-1, full_dim_1_length, -1)[full_mask]
+
+    # 拼接filtered和full
+    masked_reading_coordinates_tensor = torch.cat([masked_filtered_reading_coordinate_tensor, masked_full_reading_coordinate_tensor], dim=0)
+    masked_text_coordinate_tensor = torch.cat([masked_filtered_text_coordinate_tensor, masked_full_text_coordinate_tensor], dim=0)
+    masked_text_index_tensor = torch.cat([masked_text_index_tensor, masked_full_text_index_tensor], dim=0)
+    masked_row_index_tensor = torch.cat([masked_row_index_tensor, masked_full_row_index_tensor], dim=0)
+    masked_gaze_index_tensor = torch.cat([masked_gaze_index_tensor, masked_full_gaze_index_tensor], dim=0)
+    masked_weight_tensor = torch.cat([masked_filtered_weight_tensor, masked_full_weight_tensor], dim=0)
+
+    # 将masked_reading_coordinates_tensor(n, 2)和masked_text_coordinate_tensor(n, 2)拼接成一个(n, 2, 2)的tensor。
+    masked_reading_coordinates_tensor = masked_reading_coordinates_tensor.unsqueeze(1)
+    masked_text_coordinate_tensor = masked_text_coordinate_tensor.unsqueeze(1)
+    masked_point_pair_tensor = torch.cat([masked_reading_coordinates_tensor, masked_text_coordinate_tensor], dim=1)
+
+    point_pair_list = masked_point_pair_tensor.cpu().numpy().tolist()
+    masked_text_index_list = masked_text_index_tensor.cpu().numpy().tolist()
+    masked_row_index_list = masked_row_index_tensor.cpu().numpy().tolist()
+    masked_gaze_index_list = masked_gaze_index_tensor.cpu().numpy().tolist()
+    masked_weight_list = masked_weight_tensor.cpu().numpy().tolist()
+    data_type_list = ["filtered"] * masked_filtered_text_coordinate_tensor.size(0) + ["full"] * masked_full_text_coordinate_tensor.size(0)
+
+    # 将point_pair_list, masked_weight_list, masked_text_index_list, masked_row_index_list, masked_gaze_index_list, data_type_list这6个长度为n的list，转为1个n*6的list。
+    result = list(zip(masked_text_index_list, masked_row_index_list, masked_gaze_index_list, point_pair_list, masked_weight_list, data_type_list))
+    return result
 
 
 def step_2_add_no_matching_text_point(gaze_point_list_1d, gaze_point_info_list_1d, reading_data, effective_text_point_dict, actual_text_point_dict, point_pair_list):
@@ -77,6 +200,7 @@ def step_2_add_no_matching_text_point(gaze_point_list_1d, gaze_point_info_list_1
     total_effective_text_point_num = sum(effective_text_point_dict.values())
     point_pair_length = len(point_pair_list)
     # iterate over actual_text_point_dict
+    # TODO 这里注意下，最好也设个distance threshold，不然会导致结果很不稳定。我觉得150-200可能是个比较合适的值。
     for key, value in actual_text_point_dict.items():
         if value == 0:
             closet_point_num = int(point_pair_length * effective_text_point_dict[key] / total_effective_text_point_num)
@@ -388,9 +512,9 @@ def step_3_add_boundary_points_gpu(boundary_coordinate_list, boundary_weight_lis
         # add unique_gaze_list[text_index] to gaze_for_boundary for counter times
         gaze_for_boundary.extend([unique_gaze_dict[text_index]] * counter)
 
-    gaze_for_tensor = pad_sequence(gaze_for_boundary, batch_first=True, padding_value=100000)
+    gaze_for_tensor = pad_sequence(gaze_for_boundary, batch_first=True, padding_value=configs.padding_value)
     # gaze_for_tensor是一个3434, 385, 2的tensor，我希望生成一个3434, 385的tensor，表示哪些位置是padding的，哪些不是
-    mask_padding = gaze_for_tensor[:, :, 0] != 100000
+    mask_padding = gaze_for_tensor[:, :, 0] != configs.padding_value
     gaze_for_tensor = gaze_for_tensor.to(dtype=torch.float32, device=configs.gpu_device_id)
     dim_1_length = gaze_for_tensor.size(1)
 
@@ -478,7 +602,8 @@ def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_
     # random_selected_info_list = [info_list[i] for i in random_select_indices]
 
     gaze_point = [point_pair_list[i][0] for i in range(len(point_pair_list))]
-    kmeans = KMeans(n_clusters=n_cluster, random_state=0, n_init=10).fit(gaze_point)
+    kmeans = KMeans(n_clusters=n_cluster, random_state=0, n_init=1, max_iter=10).fit(gaze_point)
+    # kmeans = cuKMeans(n_clusters=n_cluster, random_state=0).fit(gaze_point)
     cluster_labels = kmeans.labels_
 
     cluster_gaze_point_list = [[] for _ in range(n_cluster)]
@@ -496,8 +621,12 @@ def random_select_for_gradient_descent(iteration_index, point_pair_list, weight_
     cluster_volume_list = []
     for i in range(len(cluster_gaze_point_list)):
         points = np.array(cluster_gaze_point_list[i])
-        hull = ConvexHull(points)
-        cluster_volume_list.append(hull.volume)
+        try:
+            hull = ConvexHull(points)
+            volume = hull.volume
+        except:
+            volume = 1
+        cluster_volume_list.append(volume)
 
     select_num_list = []
     target_num = int(len(gaze_point) * ratio)
@@ -571,39 +700,50 @@ def point_matching_multi_process(reading_data, gaze_point_list_1d, gaze_point_in
                                  text_data, filtered_text_data_list,
                                  total_nbrs_list, row_nbrs_list,
                                  effective_text_point_dict, actual_text_point_dict, actual_supplement_text_point_dict,
-                                 boundary_coordinate_list, boundary_weight_list, boundary_type_list, boundary_text_index_list, boundary_row_index_list, boundary_distance_threshold_list,
+                                 static_text_and_reading, static_boundary,
                                  iteration_index, distance_threshold):
+
+    (boundary_coordinate_list, boundary_weight_list,
+     boundary_type_list, boundary_text_index_list,
+     boundary_row_index_list, boundary_col_index_list,
+     boundary_distance_threshold_list, total_boundary_point_num_list) = static_boundary
+
+    (filtered_reading_density_list, filtered_text_coordinate_list, filtered_text_prediction_list, filtered_text_penalty_list,
+     full_text_coordinate_list, full_text_prediction_list, full_text_penalty_list, text_index_list, row_index_list, gaze_index_list) = static_text_and_reading
+
     np.random.seed(configs.random_seed)
 
     with multiprocessing.Pool(configs.number_of_process) as pool:
         # 1. 首先遍历所有的reading point，找到与其row label一致的、距离最近的text point，然后将这些匹配点加入到point_pair_list中。
-        args_list = []
-        for text_index in range(len(reading_data)):
-            if text_index in configs.training_index_list:
-                continue
-            reading_df = reading_data[text_index]
-            for row_index in range(configs.row_num):
-                filtered_reading_df = reading_df[reading_df["row_label"] == row_index]
+        # args_list = []
+        # for text_index in range(len(reading_data)):
+        #     if text_index in configs.training_index_list:
+        #         continue
+        #     reading_df = reading_data[text_index]
+        #     for row_index in range(configs.row_num):
+        #         filtered_reading_df = reading_df[reading_df["row_label"] == row_index]
+        #
+        #         if row_nbrs_list[text_index][row_index] and filtered_reading_df.shape[0] != 0:
+        #             filtered_reading_coordinates = filtered_reading_df[["gaze_x", "gaze_y"]].values.tolist()
+        #             filtered_distances_of_row, filtered_indices_of_row = row_nbrs_list[text_index][row_index].kneighbors(filtered_reading_coordinates)
+        #             filtered_text_data = filtered_text_data_list[text_index][row_index]
+        #             filtered_text_coordinate = filtered_text_data[["x", "y"]].values.tolist()
+        #             filtered_reading_density = filtered_reading_df["density"].values.tolist()
+        #
+        #             text_coordinate = text_data[text_index][["x", "y"]].values.tolist()
+        #             filtered_distance_of_all_text, filtered_indices_of_all_text = total_nbrs_list[text_index].kneighbors(filtered_reading_coordinates)
+        #
+        #             for gaze_index in range(len(filtered_distances_of_row)):
+        #                 args_list.append((text_index, row_index, gaze_index,
+        #                                   text_coordinate, text_data,
+        #                                   filtered_reading_coordinates, filtered_text_data, filtered_text_coordinate, filtered_reading_density,
+        #                                   filtered_indices_of_row, filtered_distances_of_row,
+        #                                   filtered_indices_of_all_text, filtered_distance_of_all_text,
+        #                                   distance_threshold, configs.bool_weight))
+        #
+        # results = pool.starmap(step_1_matching_among_all, args_list)
 
-                if row_nbrs_list[text_index][row_index] and filtered_reading_df.shape[0] != 0:
-                    filtered_reading_coordinates = filtered_reading_df[["gaze_x", "gaze_y"]].values.tolist()
-                    filtered_distances_of_row, filtered_indices_of_row = row_nbrs_list[text_index][row_index].kneighbors(filtered_reading_coordinates)
-                    filtered_text_data = filtered_text_data_list[text_index][row_index]
-                    filtered_text_coordinate = filtered_text_data[["x", "y"]].values.tolist()
-                    filtered_reading_density = filtered_reading_df["density"].values.tolist()
-
-                    text_coordinate = text_data[text_index][["x", "y"]].values.tolist()
-                    filtered_distance_of_all_text, filtered_indices_of_all_text = total_nbrs_list[text_index].kneighbors(filtered_reading_coordinates)
-
-                    for gaze_index in range(len(filtered_distances_of_row)):
-                        args_list.append((text_index, row_index, gaze_index,
-                                          text_coordinate, text_data,
-                                          filtered_reading_coordinates, filtered_text_data, filtered_text_coordinate, filtered_reading_density,
-                                          filtered_indices_of_row, filtered_distances_of_row,
-                                          filtered_indices_of_all_text, filtered_distance_of_all_text,
-                                          distance_threshold, configs.bool_weight))
-
-        results = pool.starmap(step_1_matching_among_all, args_list)
+        results = step_1_matching_among_all_gpu(reading_data, filtered_text_data_list, text_data, static_text_and_reading, distance_threshold * configs.text_distance_threshold_ratio)
 
         info_list = [(results[i][0], results[i][1], results[i][2], int(results[i][3][1][0]), int(results[i][3][1][1])) for i in range(len(results))]
         point_pair_list = [results[i][3] for i in range(len(results))]
