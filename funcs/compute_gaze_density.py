@@ -71,3 +71,5 @@ def compute_and_save_gaze_density(distance_threshold=configs.text_height):
             df.to_csv(save_path, index=False, encoding="utf-8-sig")
 
     return reading_data
+
+

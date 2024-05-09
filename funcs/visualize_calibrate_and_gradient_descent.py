@@ -79,7 +79,7 @@ def _visualize_point_pair(ax, point_pair, weight):
         cali_y_list.append(point_pair[point_pair_index][1][1])
         line_segment_list.append([point_pair[point_pair_index][0], point_pair[point_pair_index][1]])
         current_weight = weight[point_pair_index]
-        if current_weight > 0:
+        if current_weight >= 0:
             # red_ratio = current_weight / max_weight * 0.7 + 0.3
             # color = (red_ratio, 0.2, 0.2)
             color = "red"

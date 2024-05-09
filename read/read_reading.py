@@ -15,6 +15,7 @@ def read_raw_reading(reading_mode, suffix=""):
         raw_reading_dfs_2 = []
         reading_file_path_prefix = f"{file_prefix}/{file_path}/reading{suffix}"
         reading_file_paths = os.listdir(reading_file_path_prefix)
+        reading_file_paths.sort(key=lambda x: int(x.split(".")[0]))
         for reading_file_index, reading_file_path in enumerate(reading_file_paths):
             reading_file = pd.read_csv(f"{reading_file_path_prefix}/{reading_file_path}")
             if "Unnamed: 0" in reading_file.columns:

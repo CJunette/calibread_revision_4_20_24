@@ -212,7 +212,13 @@ def evaluate_accuracy_error_for_centroid_alignment(file_index, model_index=1):
     print()
 
 
-
+def check_validation_num(start_file_index, file_num=25):
+    for i in range(1, file_num + 1):
+        file_index = start_file_index + i - 1
+        cali_grad_list_all = read_all_subject_calibrate_and_grad_descent(file_index, 1)
+        for subject_index in range(len(cali_grad_list_all)):
+            validation_index_list = cali_grad_list_all[subject_index][0]["validation_index_list"]
+            print(f"file_index: {file_index}, subject_index: {subject_index}, length: {len(validation_index_list)}")
 
 
 

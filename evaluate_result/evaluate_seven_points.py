@@ -5,7 +5,7 @@ from funcs.manual_calibrate_for_std import apply_transform_to_calibration, compu
 from read.read_calibration import read_calibration, read_calibration_with_certain_corners
 
 
-def _get_paired_points_of_std_cali_from_cali_dict(avg_gaze_list, calibration_point_list):
+def get_paired_points_of_std_cali_from_cali_dict(avg_gaze_list, calibration_point_list):
     '''
     从ReadData.read_calibration_data()得到的数据中，对avg_gaze与calibration_point进行配对。
     :param avg_gaze_list:
@@ -49,7 +49,7 @@ def evaluate_seven_points_for_all_subjects(left_top_index=0, right_top_index=0, 
                                   [calibration_point_list[middle_row][middle_col]],
                                   [calibration_point_list[bottom_row][left_col], calibration_point_list[bottom_row][middle_col], calibration_point_list[bottom_row][right_col]]]
 
-        point_pairs = _get_paired_points_of_std_cali_from_cali_dict(calibration_avg_list, calibration_point_list)
+        point_pairs = get_paired_points_of_std_cali_from_cali_dict(calibration_avg_list, calibration_point_list)
 
         # 使用梯度下降算法求解仿射变换矩阵。
         # transform_matrix = get_affine_transform_matrix_gradient_descent(point_pairs)
