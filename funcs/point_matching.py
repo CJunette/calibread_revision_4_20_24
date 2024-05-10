@@ -113,7 +113,7 @@ def step_1_matching_among_all_gpu(reading_data, filtered_text_data_list, text_da
     filtered_minimal_distance_mask = filtered_distance_tensor == filtered_distance_tensor.min(dim=1)[0].unsqueeze(1)
 
     if configs.bool_weight:
-        filtered_weight_from_formula = configs.weight_divisor / (torch.abs(reading_density_tensor.unsqueeze(1) - filtered_text_prediction_tensor) + configs.weight_intercept)
+        filtered_weight_from_formula = configs.weight_divisor / (torch.abs(reading_density_tensor.unsqueeze(1) - filtered_text_prediction_tensor * configs.weight_coeff) + configs.weight_intercept)
         # 创建一个tensor，只有filtered_text_penalty_tensor的值大于0时，对应位置的值为1，否则为0。
         if configs.bool_text_weight:
             filtered_weight = filtered_weight_from_formula * (filtered_text_penalty_tensor > 0) + filtered_text_penalty_tensor * (filtered_text_penalty_tensor <= 0)

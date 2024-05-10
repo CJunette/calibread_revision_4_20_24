@@ -43,7 +43,7 @@ def calibrate_in_batch(calibrate_mode, model_indices, subject_start, subject_end
 
     # for model_index in range(len(text_data_list)):
     for model_index in model_indices:
-        calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, configs.max_iteration, subject_start, subject_end)
+        calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, subject_start, subject_end, configs.max_iteration)
 
 
 def calibrate_in_batch_for_different_training_num(calibrate_mode, start_num, end_num, start_file_index, subject_start, subject_end, random_seed=0, model_index=1):
@@ -96,4 +96,4 @@ def calibrate_in_batch_for_different_model(calibrate_mode, model_index, subject_
     #     # else:
     #     #     configs.bool_weight = True
     #     configs.file_index = start_file_index + model_index
-    #     calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode)
+    #     calibrate_all_subjects(text_data_list, model_index, reading_data_list, calibration_data_list, calibrate_mode, subject_start, subject_end)

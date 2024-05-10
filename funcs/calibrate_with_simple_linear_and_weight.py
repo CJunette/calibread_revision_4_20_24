@@ -610,7 +610,7 @@ def calibrate_with_simple_linear_and_weight(model_index, subject_index, text_dat
         json.dump({"validation_index_list": np.setdiff1d(np.arange(configs.passage_num), configs.training_index_list).tolist(),
                    "model_index": model_index, "subject_index": subject_index,
                    "bool_weight": configs.bool_weight, "bool_text_weight": configs.bool_text_weight,
-                   "weight_divisor": configs.weight_divisor, "weight_intercept": configs.weight_intercept,
+                   "weight_divisor": configs.weight_divisor, "weight_intercept": configs.weight_intercept, "weight_coeff": configs.weight_coeff,
                    "location_penalty": configs.location_penalty, "punctuation_penalty": configs.punctuation_penalty,
                    "empty_penalty": configs.empty_penalty, "completion_weight": configs.completion_weight,
                    "right_down_corner_unmatched_ratio": configs.right_down_corner_unmatched_ratio,

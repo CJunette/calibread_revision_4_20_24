@@ -3,11 +3,11 @@ import numpy as np
 round_num = "round_5"
 exp_device = "tobii"
 
-file_index = 356
+file_index = 377
 
 random_seed = 0
 number_of_process = 8
-gpu_device_id = "cuda:1"
+gpu_device_id = "cuda:3"
 
 screen_width = 1920
 screen_height = 1200
@@ -30,13 +30,14 @@ learning_rate = 0.01
 epoch_num = 300
 
 location_penalty = 1
-punctuation_penalty = -0.001
-empty_penalty = -0.001
+punctuation_penalty = 0
+empty_penalty = 0
 
 bool_weight = False # 当bool_weight为False时，text_weight的值是1，即文字还是会吸引gaze point。
 bool_text_weight = True # 当bool_weight为True而text_weight为false，text_weight的值就是0，即文字也不再吸引gaze point。如果bool_weight为False，则bool_text_weight是什么都可以。
 weight_divisor = 5
 weight_intercept = 0.5
+weight_coeff = 3
 completion_weight = 5
 right_down_corner_unmatched_ratio = 1
 left_boundary_ratio = 1600
